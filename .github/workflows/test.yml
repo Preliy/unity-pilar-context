@@ -215,8 +215,9 @@ jobs:
           unityVersion: 6000.3.18f1
           testMode: EditMode
           artifactsPath: artifacts
-          checkName: EditMode (${{ matrix.leg }})
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          # No githubToken on purpose. The action publishes a check run only when one is supplied,
+          # and that run duplicated the job status while always concluding 'neutral'. The job's own
+          # status is the signal, and it is what the branch ruleset requires.
 
       - uses: actions/upload-artifact@v4
         if: always()
