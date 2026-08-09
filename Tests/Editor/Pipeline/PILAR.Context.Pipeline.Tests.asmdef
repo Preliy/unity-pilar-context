@@ -1,0 +1,34 @@
+{
+    "name": "PILAR.Context.Pipeline.Tests",
+    "rootNamespace": "PILAR.Context.Pipeline.Tests",
+    "references": [
+        "PILAR.Context",
+        "PILAR.Context.Editor",
+        "PILAR.Context.Editor.Tests",
+        "PILAR.Context.Pipeline",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS",
+        "PILAR_UNITY_PIPELINE"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.pipeline",
+            "expression": "",
+            "define": "PILAR_UNITY_PIPELINE"
+        }
+    ],
+    "noEngineReferences": false
+}
