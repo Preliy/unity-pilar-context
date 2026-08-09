@@ -35,12 +35,18 @@ namespace PILAR.Context.Pipeline
                     .Select(t => ContextTargets.Describe(t, rootTf))
                     .OrderBy(i => i.unityPath, StringComparer.Ordinal)
                     .ToList();
-                return new { root = rootTf.name, scope, count = list.Count, targets = list };
+                return new ContextTreeFlatResult
+                {
+                    root = rootTf.name, scope = scope, count = list.Count, targets = list
+                };
             }
 
             var keep = new HashSet<Transform>(matched);
             var tree = BuildTree(rootTf, rootTf, keep, depth, 0);
-            return new { root = rootTf.name, scope, count = matched.Count, tree };
+            return new ContextTreeNestedResult
+            {
+                root = rootTf.name, scope = scope, count = matched.Count, tree = tree
+            };
         }
 
         [CliCommand("context_get", "Read the full ContextNode entries of one target, addressed by unityPath, plcPath, or unique name.")]
@@ -53,21 +59,21 @@ namespace PILAR.Context.Pipeline
             var info = ContextTargets.Describe(t, rootTf);
             var node = t.GetComponent<ContextNode>();
 
-            return new
+            return new ContextGetResult
             {
-                info.name,
-                info.unityPath,
-                info.plcPath,
-                info.tier,
-                info.tierName,
-                info.plcLinked,
-                info.hierarchyRole,
-                info.components,
-                info.hasNode,
-                info.prefabAsset,
+                name = info.name,
+                unityPath = info.unityPath,
+                plcPath = info.plcPath,
+                tier = info.tier,
+                tierName = info.tierName,
+                plcLinked = info.plcLinked,
+                hierarchyRole = info.hierarchyRole,
+                components = info.components,
+                hasNode = info.hasNode,
+                prefabAsset = info.prefabAsset,
                 entries = node != null
-                    ? node.Entries.Select(e => new { e.key, e.value }).ToArray()
-                    : Array.Empty<object>()
+                    ? node.Entries.Select(e => new ContextEntryDto { key = e.key, value = e.value }).ToArray()
+                    : Array.Empty<ContextEntryDto>()
             };
         }
 
@@ -84,7 +90,7 @@ namespace PILAR.Context.Pipeline
             var byTier = infos
                 .GroupBy(i => i.tier)
                 .OrderBy(g => g.Key)
-                .Select(g => new
+                .Select(g => new TierSummary
                 {
                     tier = g.Key,
                     tierName = ContextTargets.TierName(g.Key),
@@ -95,18 +101,18 @@ namespace PILAR.Context.Pipeline
                 })
                 .ToList();
 
-            return new
+            return new ContextAuditResult
             {
                 root = rootTf.name,
-                scope,
+                scope = scope,
                 total = infos.Count,
                 withNode = infos.Count(i => i.hasNode),
                 nonEmpty = infos.Count(i => i.entryCount > 0),
                 plcLinked = infos.Count(i => i.plcLinked == true),
-                byTier,
+                byTier = byTier,
                 // The project tree is defined by the twin framework's own components, not by transform
                 // parenting. Groups open a PLC path level; samplers flatten into a name prefix instead.
-                projectTree = new
+                projectTree = new ProjectTreeSummary
                 {
                     groups = infos.Where(i => i.hierarchyRole == "group")
                         .Select(i => i.plcPath).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
@@ -159,11 +165,11 @@ namespace PILAR.Context.Pipeline
                 MarkDirty(t);
             }
 
-            return new
+            return new ContextSetResult
             {
                 target = info.unityPath,
-                info.plcPath,
-                info.tierName,
+                plcPath = info.plcPath,
+                tierName = info.tierName,
                 wroteTo = "scene",
                 applied = pending.Select(e => e.key).ToArray(),
                 totalEntries = t.GetComponent<ContextNode>().Entries.Count
@@ -190,7 +196,10 @@ namespace PILAR.Context.Pipeline
 
             var node = t.GetComponent<ContextNode>();
             if (node == null)
-                return new { target = info.unityPath, removed = false, reason = "No ContextNode on this target." };
+                return new ContextRemoveSkippedResult
+                {
+                    target = info.unityPath, removed = false, reason = "No ContextNode on this target."
+                };
 
             bool removed;
             using (new UndoScope($"Remove context key on {t.name}"))
@@ -201,7 +210,14 @@ namespace PILAR.Context.Pipeline
                 MarkDirty(t);
             }
 
-            return new { target = info.unityPath, wroteTo = "scene", key, removed, totalEntries = node.Entries.Count };
+            return new ContextRemoveResult
+            {
+                target = info.unityPath,
+                wroteTo = "scene",
+                key = key,
+                removed = removed,
+                totalEntries = node.Entries.Count
+            };
         }
 
         [CliCommand("context_ensure", "Add an empty ContextNode to every target that lacks one. Use dry_run to preview, and mode to choose scene objects or backing prefab assets.")]
@@ -294,12 +310,12 @@ namespace PILAR.Context.Pipeline
                 }
             }
 
-            return new
+            return new ContextEnsureResult
             {
                 root = rootTf.name,
-                scope,
+                scope = scope,
                 mode = m,
-                dryRun,
+                dryRun = dryRun,
                 missingTotal = targets.Count,
                 sceneCandidates = sceneTargets.Count,
                 prefabSlots = prefabTargets.Count,
@@ -427,11 +443,11 @@ namespace PILAR.Context.Pipeline
                     ? inner.GetComponent<ContextNode>().Entries.Count
                     : 0;
 
-                return new
+                return new ContextPrefabWriteResult
                 {
                     target = info.unityPath,
-                    info.plcPath,
-                    info.tierName,
+                    plcPath = info.plcPath,
+                    tierName = info.tierName,
                     wroteTo = "prefab",
                     prefabAsset = assetPath,
                     prefabChild = rel,
