@@ -1,0 +1,29 @@
+{
+  "name": "com.pilar.context",
+  "version": "1.0.0",
+  "displayName": "PILAR Context",
+  "description": "Attaches an authored key/value context dictionary to any GameObject in a digital twin scene, and exports the annotated hierarchy as a structured JSON document for downstream AI/LLM pipelines (e.g. PLC code generation). Integrates with Open Commissioning when present.",
+  "unity": "6000.3",
+  "license": "MIT",
+  "keywords": [
+    "open-commissioning",
+    "digital-twin",
+    "virtual-commissioning",
+    "plc",
+    "llm",
+    "context",
+    "automation"
+  ],
+  "author": {
+    "name": "Viktor Gaponenko",
+    "email": "vikt.gaponenko@gmail.com",
+    "url": "https://github.com/Preliy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Preliy/unity-pilar-context.git"
+  },
+  "documentationUrl": "https://github.com/Preliy/unity-pilar-context/blob/master/Documentation~/HowToUse.md",
+  "changelogUrl": "https://github.com/Preliy/unity-pilar-context/blob/master/CHANGELOG.md",
+  "licensesUrl": "https://github.com/Preliy/unity-pilar-context/blob/master/LICENSE.md"
+}

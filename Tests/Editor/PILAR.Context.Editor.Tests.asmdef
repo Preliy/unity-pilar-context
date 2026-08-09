@@ -1,0 +1,25 @@
+{
+    "name": "PILAR.Context.Editor.Tests",
+    "rootNamespace": "PILAR.Context.Editor.Tests",
+    "references": [
+        "PILAR.Context",
+        "PILAR.Context.Editor",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

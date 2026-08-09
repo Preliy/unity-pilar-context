@@ -1,0 +1,22 @@
+# Normalise line endings so Windows development and Linux CI agree.
+# This matters for .meta files in particular: CI greps them to prove the ContextNode GUID that
+# consumer scenes depend on has not changed.
+* text=auto eol=lf
+
+# Unity YAML assets and metas
+*.meta      text eol=lf
+*.asmdef    text eol=lf
+*.unity     text eol=lf
+*.prefab    text eol=lf
+*.asset     text eol=lf
+
+*.cs        text eol=lf diff=csharp
+*.json      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+
+# Binaries git must never touch
+*.png       binary
+*.jpg       binary
+*.dll       binary
+*.unitypackage binary
