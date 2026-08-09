@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/Preliy/unity-pilar-context/discussions
+    about: Ask here rather than opening an issue. Check Documentation~/HowToUse.md first — it covers export semantics, the JSON schema, the CLI commands and troubleshooting.
+  - name: Security vulnerability
+    url: https://github.com/Preliy/unity-pilar-context/security/advisories/new
+    about: Report privately. Please do not open a public issue for security problems.
+  - name: Open Commissioning issues
+    url: https://github.com/OpenCommissioning/OC_Unity_Core/issues
+    about: For bugs in com.open-commissioning.core itself, rather than in this package's integration with it.

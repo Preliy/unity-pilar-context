@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest a capability or a change to how something works
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This package is deliberately a framework: it supplies the data model, the authoring UI and the
+        export, and authors no scene content of its own. Proposals that keep that line tend to land
+        more easily than ones that cross it.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve
+      description: >
+        The situation, not the solution. What are you doing today, and where does it fall down?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to happen
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the package
+      options:
+        - ContextNode API or the Inspector
+        - JSON export or its schema
+        - context_* CLI commands
+        - Open Commissioning integration
+        - Support for another twin framework
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: >
+        Including working around it outside the package. `IContextMetadataProvider` already lets you
+        contribute framework-derived fields without changing this package — see
+        `Documentation~/HowToUse.md`.

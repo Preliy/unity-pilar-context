@@ -1,0 +1,83 @@
+name: Bug report
+description: Something in PILAR Context does not behave as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The environment questions below are the ones that would otherwise
+        need a round trip — most issues in this package turn out to depend on which optional
+        integration is installed.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        1. Added a Context Node to ...
+        2. Ran PILAR ▸ Context ▸ Export Machine Context (JSON)
+        3. Expected ... but the exported JSON contained ...
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: PILAR Context version
+      description: From Package Manager, or the `version` in the installed `package.json`.
+      placeholder: "1.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: unity-version
+    attributes:
+      label: Unity version
+      placeholder: "6000.3.18f1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: optional-dependencies
+    attributes:
+      label: Optional dependencies installed
+      description: >
+        Each integration lives in its own assembly that is excluded when its package is missing, so
+        this usually determines which code path you are on.
+      multiple: true
+      options:
+        - com.open-commissioning.core
+        - com.unity.pipeline
+        - Neither
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: How is the package installed
+      options:
+        - Git URL, upm branch (unpinned)
+        - Git URL, pinned to upm/vX.Y.Z
+        - Release tarball
+        - Local / embedded copy
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: >
+        Any errors or warnings, including compiler errors. Messages from this package are prefixed
+        `PILAR Context:`. Pasted here, this is formatted as a code block automatically.
+      render: text
+
+  - type: textarea
+    id: json
+    attributes:
+      label: Relevant exported JSON
+      description: If the problem is in the export, the offending node or subtree helps a lot.
+      render: json

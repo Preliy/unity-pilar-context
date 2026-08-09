@@ -149,7 +149,7 @@ jobs:
             echo 'available=true' >> "$GITHUB_OUTPUT"
           else
             echo 'available=false' >> "$GITHUB_OUTPUT"
-            echo "::warning::UNITY_LICENSE is not set - skipping the EditMode matrix. See the README section on renewing the CI Unity licence."
+            echo "::warning::UNITY_LICENSE is not set - skipping the EditMode matrix. See 'Renewing the CI Unity licence' in .github/CONTRIBUTING.md."
           fi
 
   test:
