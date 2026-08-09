@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.1.0](https://github.com/Preliy/unity-pilar-context/compare/v1.0.1...v1.1.0) (2026-08-09)
+
+
+### Features
+
+* move the menu under a PILAR root ([eeb8518](https://github.com/Preliy/unity-pilar-context/commit/eeb851897761bd0574d559bd3cbd1ccc04f980c2))
+
 ## [1.0.1](https://github.com/Preliy/unity-pilar-context/compare/v1.0.0...v1.0.1) (2026-08-09)
 
 
