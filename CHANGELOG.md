@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.2.0](https://github.com/Preliy/unity-pilar-context/compare/v1.1.0...v1.2.0) (2026-08-09)
+
+
+### Features
+
+* ship the agent skills as a downloadable release asset ([77d8e71](https://github.com/Preliy/unity-pilar-context/commit/77d8e715f70170a2737bfb19430a10683de95993))
+
 # [1.1.0](https://github.com/Preliy/unity-pilar-context/compare/v1.0.1...v1.1.0) (2026-08-09)
 
 
