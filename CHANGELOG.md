@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/Preliy/unity-pilar-context/compare/v1.0.0...v1.0.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* keep the changelog title above the generated releases ([8979825](https://github.com/Preliy/unity-pilar-context/commit/89798251e5a3072c38f6a850dfba911867dccaea))
+
 # 1.0.0 (2026-08-09)
 
 
