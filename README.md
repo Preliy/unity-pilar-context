@@ -143,6 +143,30 @@ Two things about `TestProject~` that are easy to trip over:
 branch (`#upm`), so without the lock an upstream push would change what CI resolves and turn an
 unrelated pull request red.
 
+### Renewing the CI Unity licence
+
+CI runs the same EditMode suite three times — with both optional dependencies, without Open
+Commissioning, and without `com.unity.pipeline` — so the assembly guards are exercised rather than
+assumed. That needs an activated Unity Personal licence in the `UNITY_LICENSE` secret, and a Personal
+activation expires.
+
+`game-ci/unity-request-activation-file` is deprecated and now fails outright, and Unity 6's licensing
+client keeps its entitlement in an access token rather than the `C:\ProgramData\Unity\Unity_lic.ulf`
+that game-ci's docs still point at. Generate the activation file directly instead:
+
+```bash
+Unity -batchmode -nographics -quit -createManualActivationFile -logFile alf.log
+```
+
+That writes `Unity_v<version>.alf`. Upload it at <https://license.unity3d.com/manual>, download the
+`.ulf` that comes back, and store its **entire contents**:
+
+```bash
+gh secret set UNITY_LICENSE < Unity_v6000.3.18f1.ulf
+```
+
+`UNITY_EMAIL` and `UNITY_PASSWORD` hold the Unity account credentials and only need setting once.
+
 ### Releasing
 
 Releases are automatic. Commit messages on `master` follow
