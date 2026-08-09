@@ -12,6 +12,9 @@ namespace PILAR.Context
         public string value;
     }
 
+    // Groups the component under the same PILAR/Context root as the menu item. Discovery only -
+    // the class name and script GUID are unchanged, so serialized references keep resolving.
+    [AddComponentMenu("PILAR/Context/Context Node")]
     public class ContextNode : MonoBehaviour
     {
         public IReadOnlyList<ContextEntry> Entries => _entries;

@@ -41,7 +41,7 @@ Write what the scene cannot already tell a reader. "A conveyor motor" is visible
 
 ## Export
 
-**PILAR Context ▸ Export Machine Context (JSON)** walks the transform hierarchy and writes
+**PILAR ▸ Context ▸ Export Machine Context (JSON)** walks the transform hierarchy and writes
 `Assets/StreamingAssets/{SceneName}_Context.json`.
 
 **Choosing the root.** An explicit selection wins. With nothing selected the exporter looks for a root

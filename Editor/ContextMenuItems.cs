@@ -14,7 +14,8 @@ namespace PILAR.Context.Editor
         /// </summary>
         private const string ConventionalRoot = "Project";
 
-        [MenuItem("PILAR Context/Export Machine Context (JSON)")]
+        // PILAR is the root for the whole add-in family; each add-in owns a submenu under it.
+        [MenuItem("PILAR/Context/Export Machine Context (JSON)")]
         private static void ExportMachineContext()
         {
             var root = ResolveRoot();

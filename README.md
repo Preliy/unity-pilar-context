@@ -10,8 +10,6 @@ That knowledge lives in engineers' heads and in documents no tool can read. PILA
 place to live next to the objects it describes, and a way to get it out again in a form a model can
 consume.
 
-Framework only — the package authors no scene content of its own.
-
 ## Requirements
 
 - Unity **6000.3** or newer. **No required dependencies.**
@@ -87,9 +85,9 @@ because Unity cannot serialize the latter, so uniqueness is enforced by the API 
 ## Quick start
 
 1. Select a GameObject that means something — a station, an assembly, a sensor.
-2. **Add Component ▸ Context Node**.
+2. **Add Component ▸ PILAR ▸ Context ▸ Context Node**.
 3. Add entries, e.g. `Function` → *"Reads the RFID tag on the incoming part to confirm identity."*
-4. Run **PILAR Context ▸ Export Machine Context (JSON)**. With nothing selected the exporter looks for
+4. Run **PILAR ▸ Context ▸ Export Machine Context (JSON)**. With nothing selected the exporter looks for
    a root named `Project`, then falls back to the scene's only root; select a GameObject to export a
    specific subtree.
 5. Read the result at `Assets/StreamingAssets/{SceneName}_Context.json`.
@@ -117,72 +115,12 @@ One exported node:
 JSON schema, the CLI command reference, agent-driven authoring, and how to support a twin framework
 other than Open Commissioning.
 
-## Developing this package
+## Contributing
 
-This repository **is** the package — `package.json` sits at the root, which is what a UPM git install
-expects. Unity cannot open a bare package, so a host project lives in `TestProject~/` and references
-the package via `"com.pilar.context": "file:../../"`. Open **that** folder in Unity 6000.3.18f1 and
-edit the sources in place; changes compile straight into the host project.
+Bug reports, feature requests and pull requests are welcome. Development setup, how to run the test
+suite, and the commit conventions that drive releases are in
+**[CONTRIBUTING.md](.github/CONTRIBUTING.md)**.
 
-Run the tests from **Window ▸ General ▸ Test Runner ▸ EditMode**, or headlessly:
-
-```bash
-Unity -batchmode -nographics -projectPath 'TestProject~' \
-      -runTests -testPlatform EditMode -testResults results.xml
-```
-
-Two things about `TestProject~` that are easy to trip over:
-
-- **The trailing `~` is required.** A UPM git install copies the whole repository into `PackageCache`
-  and Unity imports everything not hidden, so an untilded `TestProject/` would compile inside every
-  consumer's project. `.npmignore` and package.json `"files"` do not apply to git installs.
-- **`Assets/` must exist**, even empty — Unity refuses a project folder without one and reports a
-  confusing "couldn't set project path" instead. Hence the tracked `TestProject~/Assets/.gitkeep`.
-
-`TestProject~/Packages/packages-lock.json` is committed on purpose: Open Commissioning is tracked by
-branch (`#upm`), so without the lock an upstream push would change what CI resolves and turn an
-unrelated pull request red.
-
-### Renewing the CI Unity licence
-
-CI runs the same EditMode suite three times — with both optional dependencies, without Open
-Commissioning, and without `com.unity.pipeline` — so the assembly guards are exercised rather than
-assumed. That needs an activated Unity Personal licence in the `UNITY_LICENSE` secret, and a Personal
-activation expires.
-
-`game-ci/unity-request-activation-file` is deprecated and now fails outright, and Unity 6's licensing
-client keeps its entitlement in an access token rather than the `C:\ProgramData\Unity\Unity_lic.ulf`
-that game-ci's docs still point at. Generate the activation file directly instead:
-
-```bash
-Unity -batchmode -nographics -quit -createManualActivationFile -logFile alf.log
-```
-
-That writes `Unity_v<version>.alf`. Upload it at <https://license.unity3d.com/manual>, download the
-`.ulf` that comes back, and store its **entire contents**:
-
-```bash
-gh secret set UNITY_LICENSE < Unity_v6000.3.18f1.ulf
-```
-
-`UNITY_EMAIL` and `UNITY_PASSWORD` hold the Unity account credentials and only need setting once.
-
-### Releasing
-
-Releases are automatic. Commit messages on `master` follow
-[Conventional Commits](https://www.conventionalcommits.org/) (angular preset), and semantic-release
-derives the version from them: `feat:` → minor, `fix:` → patch, `refactor:` and `docs(README):` →
-patch, `BREAKING CHANGE:` in the body → major. `chore:`, `test:`, `ci:` and plain `docs:` release
-nothing.
-
-When a push to `master` earns a release and the test matrix is green,
-[`release.yml`](.github/workflows/release.yml) bumps `package.json`, prepends the generated section to
-`CHANGELOG.md`, commits both back to `master`, tags `vX.Y.Z`, then rebuilds the `upm` branch from that
-commit — hiding `Tests/` as `Tests~/` and dropping `.github/`, `.gitignore`, `.releaserc.json` and
-`TestProject~/` — tags it `upm/vX.Y.Z`, and publishes a GitHub release with a `package/`-prefixed
-tarball.
-
-So: **do not edit `version` in `package.json` and do not write `CHANGELOG.md` entries by hand** — the
-bot owns both files, and hand edits will be overwritten at the next release.
+Please report security issues privately — see [SECURITY.md](.github/SECURITY.md).
 
 Licensed under MIT — see [LICENSE.md](LICENSE.md). Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
