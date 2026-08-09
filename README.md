@@ -109,6 +109,20 @@ One exported node:
 }
 ```
 
+## Agent skills
+
+`Skills~/` ships three [Claude Code](https://claude.com/claude-code) skills that drive the `context_*`
+commands against a live Editor — one to locate a group, station or device, one to write and review
+entries, one to measure coverage and verify the export. They encode the workflow that annotated a real
+machine, with that project's specifics stripped out.
+
+Download `pilar-context-skills-<version>.zip` from the
+[Releases page](https://github.com/Preliy/unity-pilar-context/releases), or take them from `Skills~/`
+in the installed package, and copy the folders into your project's `.claude/skills/`.
+
+They need a running Editor, the Unity CLI and `com.unity.pipeline`. See
+**[Documentation~/AgentSkills.md](Documentation~/AgentSkills.md)**.
+
 ## More
 
 **[Documentation~/HowToUse.md](Documentation~/HowToUse.md)** — export semantics and pruning, the full

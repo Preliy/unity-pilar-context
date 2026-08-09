@@ -152,8 +152,9 @@ supply, then writes entries **live** into the running Editor through `context_se
 editing, no reimport, and the result is visible in the Inspector immediately. `context_audit` reports
 what is still uncovered, so the work can be resumed across sessions.
 
-The `OC_Community_Demo_1` project carries a worked example as a set of Claude Code skills that drive
-exactly these commands.
+`Skills~/` ships three Claude Code skills that implement exactly that loop — inspect, author, audit.
+See **[AgentSkills.md](AgentSkills.md)**, or download `pilar-context-skills-<version>.zip` from the
+[Releases page](https://github.com/Preliy/unity-pilar-context/releases).
 
 ## Supporting another twin framework
 
