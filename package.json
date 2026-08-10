@@ -1,6 +1,6 @@
 {
   "name": "com.pilar.context",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "displayName": "PILAR Context",
   "description": "Attaches an authored key/value context dictionary to any GameObject in a digital twin scene, and exports the annotated hierarchy as a structured JSON document for downstream AI/LLM pipelines (e.g. PLC code generation). Integrates with Open Commissioning when present.",
   "unity": "6000.3",

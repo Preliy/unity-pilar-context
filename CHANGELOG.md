@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.4.0](https://github.com/Preliy/unity-pilar-context/compare/v1.3.0...v1.4.0) (2026-08-10)
+
+
+### Features
+
+* hold a node's whole record in one dictionary ([06e1c2a](https://github.com/Preliy/unity-pilar-context/commit/06e1c2a36cbd7706b6f095b7d371e2f3fef18fd8))
+
 # [1.3.0](https://github.com/Preliy/unity-pilar-context/compare/v1.2.0...v1.3.0) (2026-08-10)
 
 
