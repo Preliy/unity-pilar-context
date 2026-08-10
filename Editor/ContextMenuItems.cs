@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -32,6 +33,54 @@ namespace PILAR.Context.Editor
 
             AssetDatabase.Refresh();
             Debug.Log($"PILAR Context: exported machine context of '{root.name}' to {path}");
+
+            WarnIfNeverSynced(root.transform);
+        }
+
+        [MenuItem("PILAR/Context/Sync Framework Metadata")]
+        private static void SyncFrameworkMetadata()
+        {
+            var root = ResolveRoot();
+            if (root == null) return;
+
+            if (ContextMetadataRegistry.Providers.Count == 0)
+            {
+                Debug.LogWarning(
+                    "PILAR Context: no metadata provider is installed, so there is nothing to sync. " +
+                    "Install a twin framework integration such as com.open-commissioning.core.");
+                return;
+            }
+
+            var changed = 0;
+            foreach (var node in root.GetComponentsInChildren<ContextNode>(true))
+            {
+                Undo.RecordObject(node, "Sync context metadata");
+                if (!ContextMetadataSync.Apply(node)) continue;
+                EditorUtility.SetDirty(node);
+                changed++;
+            }
+
+            if (changed > 0) EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+
+            Debug.Log(
+                $"PILAR Context: synced framework metadata under '{root.name}' — " +
+                $"{changed} node(s) updated.");
+        }
+
+        /// <summary>
+        /// An export used to query providers itself, so metadata simply appeared. It now writes down
+        /// what the nodes hold, which means a scene nobody synced exports none — and looks complete
+        /// while doing it. Say so rather than letting that ship silently.
+        /// </summary>
+        private static void WarnIfNeverSynced(Transform root)
+        {
+            if (ContextMetadataRegistry.Providers.Count == 0) return;
+            if (ContextMetadataSync.HasDerivedEntries(root)) return;
+
+            Debug.LogWarning(
+                $"PILAR Context: {ContextMetadataRegistry.Providers.Count} metadata provider(s) are " +
+                "installed but no node under the export root carries any framework metadata. " +
+                "Run PILAR ▸ Context ▸ Sync Framework Metadata and export again.");
         }
 
         /// <summary>

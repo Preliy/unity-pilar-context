@@ -28,6 +28,13 @@ namespace PILAR.Context.OpenCommissioning
         public int Order => 0;
 
         /// <summary>
+        /// Everything this provider writes lands under "oc." — oc.plcPath, oc.deviceType. Fixed
+        /// forever: it is how a sync recognises its own entries in a node, so changing it would strand
+        /// the OC data already written into every scene of every project using this package.
+        /// </summary>
+        public string Namespace => "oc";
+
+        /// <summary>
         /// A subtree matters when it contains any OC component or any Hierarchy node. The raw CAD
         /// hierarchy of a real machine is overwhelmingly mesh geometry — in the reference project
         /// roughly 7,300 GameObjects — so without this test an export is almost entirely noise.
@@ -46,7 +53,8 @@ namespace PILAR.Context.OpenCommissioning
         }
 
         /// <summary>
-        /// What OC knows about this Transform:
+        /// What OC knows about this Transform. Keys are bare here; the registry prefixes them with
+        /// <see cref="Namespace"/>, so on a node they read oc.plcPath, oc.deviceType and so on.
         ///
         /// plcPath          — its position in the PLC symbol tree, e.g. MAIN.FG_01.P_Reader.
         /// hierarchyRole    — "group" for a Hierarchy that opens a level in that path (joined with

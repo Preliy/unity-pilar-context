@@ -164,6 +164,99 @@ namespace PILAR.Context.Pipeline.Tests
             CollectionAssert.Contains(result.missingNode, "Project/FG_01");
         }
 
+        [Test]
+        public void ContextAudit_IsUnmovedByAFullSync()
+        {
+            BuildStandardFixture();
+            foreach (var t in ContextTargets.Enumerate(Root.transform).ToList())
+                NodeWith(t);
+            SetMetadata(null, ("plcPath", "MAIN.Anything"));
+
+            ContextPipelineCommands.ContextSync(dryRun: false);
+            var result = (ContextAuditResult)ContextPipelineCommands.ContextAudit();
+
+            // The trap this whole design has to avoid: a sync fills every node's list, and coverage
+            // reads 100% while not one word has been written about the machine.
+            Assert.AreEqual(5, result.withNode);
+            Assert.AreEqual(0, result.nonEmpty, "synced metadata is not documentation");
+            CollectionAssert.Contains(result.emptyNode, "Project/FG_01");
+        }
+
+        // ------------------------------------------------------------ context_sync
+
+        [Test]
+        public void ContextSync_DryRunReportsWithoutWriting()
+        {
+            BuildStandardFixture();
+            var node = NodeWith(Root.transform.Find("FG_01"));
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"));
+
+            var result = (ContextSyncResult)ContextPipelineCommands.ContextSync();
+
+            Assert.IsTrue(result.dryRun, "dry run is the default - a sync must never surprise a caller");
+            Assert.AreEqual(1, result.changed);
+            Assert.AreEqual(1, result.added);
+            CollectionAssert.AreEqual(new[] { "fake.plcPath" }, result.targets.Single().added);
+            Assert.AreEqual("Project/FG_01", result.targets.Single().scenePath);
+            CollectionAssert.IsEmpty(node.Entries);
+        }
+
+        [Test]
+        public void ContextSync_AppliedRunWrites()
+        {
+            BuildStandardFixture();
+            var node = NodeWith(Root.transform.Find("FG_01"), ("Function", "Feeds the press."));
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"));
+
+            ContextPipelineCommands.ContextSync(dryRun: false);
+
+            Assert.IsTrue(node.TryGetValue("fake.plcPath", out var written));
+            Assert.AreEqual("MAIN.FG_01", written);
+            Assert.IsTrue(node.TryGetValue("Function", out _), "authored entries survive a sync");
+        }
+
+        [Test]
+        public void ContextSync_ReportsNothingOnceInStep()
+        {
+            BuildStandardFixture();
+            NodeWith(Root.transform.Find("FG_01"));
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"));
+            ContextPipelineCommands.ContextSync(dryRun: false);
+
+            var result = (ContextSyncResult)ContextPipelineCommands.ContextSync();
+
+            Assert.AreEqual(0, result.changed);
+            CollectionAssert.IsEmpty(result.targets);
+        }
+
+        [Test]
+        public void ContextSync_ReportsAKeyWhoseFactDisappeared()
+        {
+            BuildStandardFixture();
+            NodeWith(Root.transform.Find("FG_01"));
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"), ("hierarchyRole", "group"));
+            ContextPipelineCommands.ContextSync(dryRun: false);
+
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"));
+            var result = (ContextSyncResult)ContextPipelineCommands.ContextSync();
+
+            Assert.AreEqual(1, result.removed);
+            CollectionAssert.AreEqual(new[] { "fake.hierarchyRole" }, result.targets.Single().removed);
+        }
+
+        [Test]
+        public void ContextSync_SkipsTargetsWithNoNode()
+        {
+            BuildStandardFixture();
+            SetMetadata(null, ("plcPath", "MAIN.Anything"));
+
+            var result = (ContextSyncResult)ContextPipelineCommands.ContextSync();
+
+            // Sync fills nodes; it does not create them. context_ensure is the command that does.
+            Assert.AreEqual(0, result.scanned);
+            Assert.AreEqual(0, result.changed);
+        }
+
         // ------------------------------------------------------------- context_set
 
         [Test]
@@ -240,6 +333,30 @@ namespace PILAR.Context.Pipeline.Tests
                 () => ContextPipelineCommands.ContextSet("FG_02", entries: "not json at all"));
         }
 
+        [Test]
+        public void ContextSet_RefusesAKeyAProviderOwns()
+        {
+            BuildStandardFixture();
+
+            // Hand-writing a namespaced key survives only until the next sync reverts it, so failing
+            // loudly beats letting the caller believe it stuck.
+            var ex = Assert.Throws<ArgumentException>(
+                () => ContextPipelineCommands.ContextSet("FG_02", key: "fake.plcPath", value: "MAIN.Mine"));
+
+            StringAssert.Contains("context_sync", ex.Message);
+            StringAssert.Contains("fake", ex.Message);
+        }
+
+        [Test]
+        public void ContextSet_AllowsAnAuthoredDottedKey()
+        {
+            BuildStandardFixture();
+
+            // "Motor.Speed" claims no installed namespace, so it is documentation like any other key.
+            Assert.DoesNotThrow(
+                () => ContextPipelineCommands.ContextSet("FG_02", key: "Motor.Speed", value: "1.4 m/s"));
+        }
+
         // ---------------------------------------------------------- context_remove
 
         [Test]
@@ -280,6 +397,21 @@ namespace PILAR.Context.Pipeline.Tests
             var skipped = (ContextRemoveSkippedResult)result;
             Assert.IsFalse(skipped.removed);
             StringAssert.Contains("No ContextNode", skipped.reason);
+        }
+
+        [Test]
+        public void ContextRemove_RefusesAKeyAProviderOwns()
+        {
+            BuildStandardFixture();
+            var node = NodeWith(Root.transform.Find("FG_01"));
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"));
+            ContextPipelineCommands.ContextSync(dryRun: false);
+
+            // Deleting it by hand is undone by the next sync; removing the scene component that
+            // produced it is the real edit.
+            Assert.Throws<ArgumentException>(
+                () => ContextPipelineCommands.ContextRemove("FG_01", "fake.plcPath"));
+            Assert.IsTrue(node.ContainsKey("fake.plcPath"));
         }
 
         [Test]

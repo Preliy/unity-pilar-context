@@ -52,25 +52,35 @@ Every target reports three independent things. Do not read one for another.
 | `tier` / `tierName` | Documentation granularity: `machine`, `group`, `assembly`, `device` |
 | `scenePath` | Where the object sits in the Unity hierarchy |
 | `topologyPath` | Where it sits in the authored `ContextNode` tree — un-annotated levels are absent, so this is shorter than `scenePath` and empty for a target with no node |
-| `metadata` | Key/value facts from whichever integration is installed, under **its** keys |
+| `entryCount` / `entryKeys` | **Authored** entries only. This is coverage |
+| `derivedCount` | How many entries a sync wrote under a framework's namespace |
 
-`metadata` is an open vocabulary: nothing in the package defines or interprets the keys, and an absent
-key means the framework did not state that fact, not that it is false. Under Open Commissioning you
-will see:
+A node keeps one dictionary holding both kinds. `context_get` returns all of it as `entries`; a key
+with no prefix is a human's, a prefixed key belongs to an installed integration and was written by
+`context_sync`. **Never write a prefixed key** — `context_set` refuses them, because the next sync
+would revert the edit.
+
+The vocabulary is open: nothing in the package defines or interprets those keys, and an absent key
+means the framework did not state that fact, not that it is false. Under Open Commissioning you will
+see:
 
 | Key | Value | Means |
 |---|---|---|
-| `plcPath` | `MAIN.FG_01.P_Reader` | Position in the controller symbol tree |
-| `hierarchyRole` | `group` | Opens a level in the controller path, joined with `.` |
+| `oc.plcPath` | `MAIN.FG_01.P_Reader` | Position in the controller symbol tree |
+| `oc.hierarchyRole` | `group` | Opens a level in the controller path, joined with `.` |
 | | `sampler` | Opens **no** level; prefixes its children instead, joined with `_` |
-| `deviceType` | `SensorBinary` | The device component's type. Present on devices only |
-| `aggregatedBy` | a panel name | A panel sampler folded this device into its own single symbol |
-| `simulationDevice` | `true` | The device talks to no controller and no sampler explains why |
+| `oc.deviceType` | `SensorBinary` | The device component's type. Present on devices only |
+| `oc.aggregatedBy` | a panel name | A panel sampler folded this device into its own single symbol |
+| `oc.simulationDevice` | `true` | The device talks to no controller and no sampler explains why |
 
 So a tier-2 `assembly` may be either real controller structure or pure Unity grouping. Check whether
-it carries a `hierarchyRole` before treating it as a controller level. A target is a real controller
-symbol when it has a `deviceType` and **neither** `aggregatedBy` nor `simulationDevice` — every
-target resolves a `plcPath`, including pure structure, so the path alone proves nothing.
+it carries an `oc.hierarchyRole` before treating it as a controller level. A target is a real
+controller symbol when it has an `oc.deviceType` and **neither** `oc.aggregatedBy` nor
+`oc.simulationDevice` — every target resolves an `oc.plcPath`, including pure structure, so the path
+alone proves nothing.
+
+**A target with `derivedCount: 0` was never synced**, which is not the same as a framework having
+nothing to say about it. Run `context_sync --dry_run true` before concluding anything from an absence.
 
 ## Quick reference
 
@@ -78,7 +88,7 @@ target resolves a `plcPath`, including pure structure, so the path alone proves 
 # Overview: nested tree, structure only, 2 levels deep
 unity command context_tree --scope structural --depth 2
 
-# Every device as a flat list (name, scenePath, topologyPath, metadata, components, node state)
+# Every device as a flat list (name, both paths, components, coverage counts)
 unity command context_tree --scope devices --flat --format json
 
 # What still has no context?
@@ -93,10 +103,11 @@ unity command context_get --target "P_Reader"
 unity command context_audit --format json
 ```
 
-`--target` accepts a **scenePath**, a **topologyPath**, any **metadata value** that is unique under the
-root (case-insensitive — this is how a framework path like `MAIN.FG_01.P_Reader` still resolves), or a
-**bare name** when it is unique. An ambiguous value or name returns an error listing a full path to
-disambiguate — read it and retry with the path.
+`--target` accepts a **scenePath**, a **topologyPath**, the value of any **prefixed entry** that is
+unique under the root (case-insensitive — this is how a framework path like `MAIN.FG_01.P_Reader`
+still resolves, and it reads the node rather than the framework, so it works even where that framework
+is not installed), or a **bare name** when it is unique. An ambiguous value or name returns an error
+listing a full path to disambiguate — read it and retry with the path.
 
 `--scope` takes `all | structural | devices | missing`, where `missing` means *no `ContextNode` at
 all, or one with zero entries* — an empty node is not coverage.

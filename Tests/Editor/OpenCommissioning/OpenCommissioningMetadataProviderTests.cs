@@ -66,6 +66,14 @@ namespace PILAR.Context.OpenCommissioning.Tests
             return _provider.ResolveMetadata(t).ToDictionary(e => e.key, e => e.value);
         }
 
+        [Test]
+        public void Namespace_IsOc()
+        {
+            // Fixed forever: it is how a sync recognises its own entries in a node, so changing it
+            // would strand the OC data already written into every scene of every project.
+            Assert.AreEqual("oc", _provider.Namespace);
+        }
+
         // ------------------------------------------------------------------ plcPath
 
         [Test]

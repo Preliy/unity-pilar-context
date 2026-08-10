@@ -26,30 +26,37 @@ Tiers describe *documentation granularity*. Two paths describe position, and the
 A structural target may therefore sit deep in `scenePath` and shallow in `topologyPath`. That gap is
 information: it says the intervening levels carry no meaning worth documenting.
 
-The controller's own tree is a **third** axis, and it arrives as `metadata` — an open key/value list
-whose keys belong to whichever `IContextMetadataProvider` is installed. Nothing in the package
-interprets them. Without a provider, `metadata` is empty everywhere and the tiering collapses to the
-structural tiers with no devices at all.
+The controller's own tree is a **third** axis, and it lives in the same entry list as your writing —
+under a key prefix belonging to whichever `IContextMetadataProvider` is installed, written there by
+`context_sync`. Nothing in the package interprets those keys. Without a provider there are no
+prefixed entries at all, and the tiering collapses to the structural tiers with no devices.
 
-## Reading Open Commissioning's metadata
+**Never write a prefixed key yourself.** `context_set` refuses them outright: the next sync would
+revert the edit, so a hand-written value is a lie with a timer on it. Your own dotted keys
+(`Motor.Speed`) are fine — only a prefix matching an installed provider is reserved.
+
+## Reading Open Commissioning's entries
 
 | Key | Value | Meaning |
 |---|---|---|
-| `plcPath` | `MAIN.FG_01.P_Reader` | Position in the controller symbol tree |
-| `hierarchyRole` | `group` | Opens a level in the controller path, joined with `.` |
+| `oc.plcPath` | `MAIN.FG_01.P_Reader` | Position in the controller symbol tree |
+| `oc.hierarchyRole` | `group` | Opens a level in the controller path, joined with `.` |
 | | `sampler` | Opens **no** level; prefixes its children instead, joined with `_`, so the branch stays flat |
-| `deviceType` | `SensorBinary` | The device component's type. Present on devices only |
-| `aggregatedBy` | a panel name | A panel sampler folded this device into its own single symbol |
-| `simulationDevice` | `true` | The device exchanges nothing with the controller and no sampler explains why |
+| `oc.deviceType` | `SensorBinary` | The device component's type. Present on devices only |
+| `oc.aggregatedBy` | a panel name | A panel sampler folded this device into its own single symbol |
+| `oc.simulationDevice` | `true` | The device exchanges nothing with the controller and no sampler explains why |
 
-Check whether a structural target carries a `hierarchyRole` before treating it as a controller level,
-and when it has none, **say so in the entry** — otherwise a reader will assume it is one. A `plcPath`
-proves nothing on its own: every target has one, including pure structure.
+Check whether a structural target carries an `oc.hierarchyRole` before treating it as a controller
+level, and when it has none, **say so in the entry** — otherwise a reader will assume it is one. An
+`oc.plcPath` proves nothing on its own: every target has one, including pure structure.
 
-Carrying a device component is not the same as being a controller symbol. **Neither `aggregatedBy` nor
-`simulationDevice` produces one**, and downstream code generation must skip both — say so in the
-entry. Note that such devices may share a resolved `plcPath` with one another, which is harmless
-precisely because neither becomes a symbol.
+Carrying a device component is not the same as being a controller symbol. **Neither `oc.aggregatedBy`
+nor `oc.simulationDevice` produces one**, and downstream code generation must skip both — say so in
+the entry. Note that such devices may share a resolved `oc.plcPath` with one another, which is
+harmless precisely because neither becomes a symbol.
+
+A target with no prefixed entries may simply never have been synced. Check with
+`context_sync --dry_run true` before writing that a framework knows nothing about it.
 
 ## Aggregating components
 
@@ -57,7 +64,7 @@ Some frameworks let one component gather several children into a single controll
 operator panel exposing its buttons and lamps through one word, for example. Two consequences worth
 writing down when you meet one:
 
-- The children carry `aggregatedBy` naming the parent, and are real devices all the same.
+- The children carry `oc.aggregatedBy` naming the parent, and are real devices all the same.
 - The **order** of the aggregated list determines the bit assignment, so reordering it silently
   changes what the controller reads. If the project has such a component, record the order in the
   parent's entry.

@@ -5,6 +5,8 @@ using Unity.Pipeline.Commands;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using CtxEditor = PILAR.Context.Editor;
+using ContextMetadataSync = PILAR.Context.Editor.ContextMetadataSync;
 using UndoScope = Unity.Pipeline.Editor.Authoring.AuthoringUndoScope;
 
 namespace PILAR.Context.Pipeline
@@ -49,7 +51,7 @@ namespace PILAR.Context.Pipeline
             };
         }
 
-        [CliCommand("context_get", "Read the full ContextNode entries of one target, addressed by scenePath, topologyPath, a framework path from metadata, or unique name.")]
+        [CliCommand("context_get", "Read one target's full entry dictionary - authored context and synced framework metadata alike - addressed by scenePath, topologyPath, a framework path from metadata, or unique name.")]
         public static object ContextGet(
             [CliArg("target", "scenePath (Project/FG_01/P_Reader), topologyPath, a framework path from metadata, or a unique GameObject name.", Required = true)] string target,
             [CliArg("root", "Root GameObject name to resolve against.")] string root = ContextTargets.DefaultRoot)
@@ -66,7 +68,6 @@ namespace PILAR.Context.Pipeline
                 topologyPath = info.topologyPath,
                 tier = info.tier,
                 tierName = info.tierName,
-                metadata = info.metadata,
                 components = info.components,
                 hasNode = info.hasNode,
                 prefabAsset = info.prefabAsset,
@@ -129,6 +130,8 @@ namespace PILAR.Context.Pipeline
             if (pending.Count == 0)
                 throw new ArgumentException("Nothing to write — supply key and value, or an entries JSON array.");
 
+            foreach (var e in pending) RejectDerivedKey(e.key);
+
             var rootTf = ContextTargets.ResolveRoot(root);
             var t = ContextTargets.Resolve(target, rootTf);
             var info = ContextTargets.Describe(t, rootTf);
@@ -165,6 +168,8 @@ namespace PILAR.Context.Pipeline
         {
             if (string.IsNullOrWhiteSpace(key))
                 throw new ArgumentException("key is required.");
+
+            RejectDerivedKey(key);
 
             var rootTf = ContextTargets.ResolveRoot(root);
             var t = ContextTargets.Resolve(target, rootTf);
@@ -305,7 +310,80 @@ namespace PILAR.Context.Pipeline
             };
         }
 
+        [CliCommand("context_sync", "Write what the installed twin framework knows into each node's entry list, under its own key namespace. Dry run by default, which doubles as the drift report.")]
+        public static object ContextSync(
+            [CliArg("scope", "Which targets to sync: all | structural | devices | missing.")] string scope = "all",
+            [CliArg("dry_run", "Report what would change without writing.")] bool dryRun = true,
+            [CliArg("root", "Root GameObject name to walk from.")] string root = ContextTargets.DefaultRoot)
+        {
+            var rootTf = ContextTargets.ResolveRoot(root);
+            var nodes = ContextTargets.Enumerate(rootTf, scope)
+                .Select(t => t.GetComponent<ContextNode>())
+                .Where(node => node != null)
+                .ToList();
+
+            var targets = new List<ContextSyncTarget>();
+            var wrote = false;
+
+            foreach (var node in nodes)
+            {
+                var plan = ContextMetadataSync.Plan(node);
+                if (plan.IsEmpty) continue;
+
+                targets.Add(new ContextSyncTarget
+                {
+                    scenePath = ContextTargets.ScenePath(node.transform, rootTf),
+                    added = plan.Added.ToArray(),
+                    updated = plan.Updated.ToArray(),
+                    removed = plan.Removed.ToArray()
+                });
+
+                if (dryRun) continue;
+
+                using (new UndoScope($"Sync context metadata on {node.name}"))
+                {
+                    Undo.RecordObject(node, "Sync context metadata");
+                    ContextMetadataSync.Apply(node);
+                    EditorUtility.SetDirty(node);
+                }
+                wrote = true;
+            }
+
+            // One scene dirty for the whole run rather than one per node.
+            if (wrote) MarkDirty(rootTf);
+
+            return new ContextSyncResult
+            {
+                root = rootTf.name,
+                scope = scope,
+                dryRun = dryRun,
+                scanned = nodes.Count,
+                changed = targets.Count,
+                added = targets.Sum(t => t.added.Length),
+                updated = targets.Sum(t => t.updated.Length),
+                removed = targets.Sum(t => t.removed.Length),
+                targets = targets
+                    .OrderBy(t => t.scenePath, StringComparer.Ordinal)
+                    .ToArray()
+            };
+        }
+
         // -------------------------------------------------------------- helpers
+
+        /// <summary>
+        /// Refuses a key an installed provider owns. Writing one by hand survives only until the next
+        /// sync overwrites it, so failing loudly beats letting the caller believe it stuck.
+        /// </summary>
+        private static void RejectDerivedKey(string key)
+        {
+            if (!CtxEditor.ContextMetadataRegistry.IsDerivedKey(key)) return;
+
+            var ns = key.Substring(0, key.IndexOf(CtxEditor.ContextMetadataRegistry.NamespaceSeparator));
+            throw new ArgumentException(
+                $"'{key}' belongs to the '{ns}' metadata namespace, which a twin framework integration " +
+                "owns. Entries under it are written by context_sync and any hand-written value is " +
+                "reverted by the next run. Use a key of your own instead.");
+        }
 
         private static ContextTargetInfo BuildTree(
             Transform t, Transform root, HashSet<Transform> keep, int maxDepth, int depth)
