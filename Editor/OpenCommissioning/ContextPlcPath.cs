@@ -8,9 +8,10 @@ namespace PILAR.Context.OpenCommissioning
     /// Link.GetHierarchyPath() computes for IDevice components, but for an arbitrary Transform
     /// that may not carry an IDevice/Link at all (e.g. a plain assembly wrapper).
     ///
-    /// Internal: this is an Open Commissioning implementation detail. Callers outside this assembly
-    /// go through <see cref="PILAR.Context.Editor.ContextMetadataRegistry.Path"/>, which works
-    /// whether or not OC is installed.
+    /// Internal: this is an Open Commissioning implementation detail. Outside this assembly the path
+    /// is one metadata entry among others, reached through
+    /// <see cref="PILAR.Context.Editor.ContextMetadataRegistry.Metadata"/>, which works whether or
+    /// not OC is installed.
     /// </summary>
     internal static class ContextPlcPath
     {

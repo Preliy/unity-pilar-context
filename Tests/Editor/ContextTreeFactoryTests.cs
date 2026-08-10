@@ -94,7 +94,7 @@ namespace PILAR.Context.Editor.Tests
         }
 
         [Test]
-        public void Build_ComposesUnityPathFromTheRoot()
+        public void Build_ComposesScenePathFromTheRoot()
         {
             var group = Child(_root, "FG_01");
             var device = Child(group, "P_Reader");
@@ -102,9 +102,29 @@ namespace PILAR.Context.Editor.Tests
 
             var node = ContextTreeFactory.Build(_root.transform);
 
-            Assert.AreEqual("Root", node.unityPath);
-            Assert.AreEqual("Root/FG_01", node.children[0].unityPath);
-            Assert.AreEqual("Root/FG_01/P_Reader", node.children[0].children[0].unityPath);
+            Assert.AreEqual("Root", node.scenePath);
+            Assert.AreEqual("Root/FG_01", node.children[0].scenePath);
+            Assert.AreEqual("Root/FG_01/P_Reader", node.children[0].children[0].scenePath);
+        }
+
+        [Test]
+        public void Build_ComposesTopologyPathFromTheContextNodesOnly()
+        {
+            var group = Child(_root, "FG_01");
+            group.AddComponent<ContextNode>();
+            var wrapper = Child(group, "Geometry");
+            Child(wrapper, "P_Reader").AddComponent<ContextNode>();
+
+            var node = ContextTreeFactory.Build(_root.transform);
+            var groupNode = node.children[0];
+            var wrapperNode = groupNode.children[0];
+            var deviceNode = wrapperNode.children[0];
+
+            // Root and Geometry carry no node, so they are in the scene path and not the topology.
+            Assert.AreEqual(string.Empty, node.topologyPath);
+            Assert.AreEqual("FG_01", groupNode.topologyPath);
+            Assert.AreEqual(string.Empty, wrapperNode.topologyPath);
+            Assert.AreEqual("FG_01/P_Reader", deviceNode.topologyPath);
         }
 
         [Test]
@@ -133,50 +153,40 @@ namespace PILAR.Context.Editor.Tests
         }
 
         [Test]
-        public void Build_LeavesDerivedFieldsEmpty_WithNoProvider()
+        public void Build_LeavesMetadataEmpty_WithNoProvider()
         {
             Child(_root, "P_Reader").AddComponent<ContextNode>();
 
             var child = ContextTreeFactory.Build(_root.transform).children[0];
 
-            Assert.AreEqual(string.Empty, child.plcPath);
-            Assert.AreEqual(string.Empty, child.plcLinked);
-            Assert.AreEqual(string.Empty, child.hierarchyRole);
+            CollectionAssert.IsEmpty(child.metadata);
         }
 
         [Test]
-        public void Build_FillsDerivedFieldsFromTheProvider()
+        public void Build_CarriesProviderMetadataVerbatim()
         {
             Child(_root, "P_Reader").AddComponent<ContextNode>();
-            var provider = new FakeMetadataProvider
+            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[]
             {
-                PathFunc = t => t.name == "P_Reader" ? "MAIN.FG_01.P_Reader" : string.Empty,
-                LinkStateFunc = t => t.name == "P_Reader" ? true : (bool?)null,
-                RoleFunc = t => t.name == "P_Reader" ? "group" : string.Empty
-            };
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { provider });
+                new FakeMetadataProvider
+                {
+                    MetadataFunc = t => t.name != "P_Reader"
+                        ? System.Array.Empty<ContextEntry>()
+                        : new[]
+                        {
+                            new ContextEntry { key = "plcPath", value = "MAIN.FG_01.P_Reader" },
+                            new ContextEntry { key = "simulationDevice", value = "true" }
+                        }
+                }
+            });
 
             var child = ContextTreeFactory.Build(_root.transform).children[0];
 
-            Assert.AreEqual("MAIN.FG_01.P_Reader", child.plcPath);
-            Assert.AreEqual("true", child.plcLinked);
-            Assert.AreEqual("group", child.hierarchyRole);
-        }
-
-        [Test]
-        public void Build_SerializesDisabledLinkAsFalse_NotEmpty()
-        {
-            // "false" (an internal device) and "" (not a device) drive different codegen decisions.
-            Child(_root, "M_Internal").AddComponent<ContextNode>();
-            var provider = new FakeMetadataProvider
-            {
-                LinkStateFunc = t => t.name == "M_Internal" ? false : (bool?)null
-            };
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { provider });
-
-            var child = ContextTreeFactory.Build(_root.transform).children[0];
-
-            Assert.AreEqual("false", child.plcLinked);
+            // The factory neither interprets nor reorders a provider's keys — that is what keeps the
+            // schema free of any framework's vocabulary.
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=MAIN.FG_01.P_Reader", "simulationDevice=true" },
+                child.metadata.Select(e => $"{e.key}={e.value}").ToArray());
         }
 
         [Test]
@@ -209,6 +219,10 @@ namespace PILAR.Context.Editor.Tests
         {
             var device = Child(_root, "P_Reader");
             device.AddComponent<ContextNode>().Add("Function", "Reads the RFID tag.");
+            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[]
+            {
+                FakeMetadataProvider.Emitting(("plcPath", "MAIN.P_Reader"))
+            });
 
             // Never assert the exact string: it embeds the active scene name and UtcNow.
             var parsed = JsonUtility.FromJson<ExportRootMirror>(ContextTreeFactory.BuildJson(_root.transform));
@@ -216,9 +230,18 @@ namespace PILAR.Context.Editor.Tests
             Assert.IsFalse(string.IsNullOrEmpty(parsed.generatedAtUtc));
             Assert.AreEqual("Root", parsed.root.name);
             Assert.AreEqual(1, parsed.root.children.Count);
-            Assert.AreEqual("P_Reader", parsed.root.children[0].name);
-            Assert.AreEqual("Function", parsed.root.children[0].context[0].key);
-            Assert.AreEqual("Reads the RFID tag.", parsed.root.children[0].context[0].value);
+
+            var child = parsed.root.children[0];
+            Assert.AreEqual("P_Reader", child.name);
+            Assert.AreEqual("Root/P_Reader", child.scenePath);
+            Assert.AreEqual("P_Reader", child.topologyPath);
+            Assert.AreEqual("Function", child.context[0].key);
+            Assert.AreEqual("Reads the RFID tag.", child.context[0].value);
+
+            // Metadata is a list of serializable entries, so it survives JsonUtility intact — which
+            // is why nothing has to be flattened into a string to be exported.
+            Assert.AreEqual("plcPath", child.metadata[0].key);
+            Assert.AreEqual("MAIN.P_Reader", child.metadata[0].value);
         }
     }
 }

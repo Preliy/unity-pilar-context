@@ -15,42 +15,41 @@ reason not to, and record any new key you introduce in your own copy of this fil
 
 Optional anywhere: `Role` (instance-specific, see the prefab rule), `Maintenance`, `Vendor`, `Notes`.
 
-## The controller project tree is not the transform tree
+## Three trees, not one
 
-Tiers describe *documentation granularity*. The controller's project tree is a **separate axis**,
-reported on every query as `hierarchyRole` and `plcPath`:
+Tiers describe *documentation granularity*. Two paths describe position, and they are different trees:
 
-| `hierarchyRole` | Meaning | Path effect |
+- **`scenePath`** — the Unity transform hierarchy, arranged for the scene and the CAD import.
+- **`topologyPath`** — the `ContextNode` tree, the structure a human authored. Levels you never
+  annotated are simply absent from it, and a target with no node has no topology path at all.
+
+A structural target may therefore sit deep in `scenePath` and shallow in `topologyPath`. That gap is
+information: it says the intervening levels carry no meaning worth documenting.
+
+The controller's own tree is a **third** axis, and it arrives as `metadata` — an open key/value list
+whose keys belong to whichever `IContextMetadataProvider` is installed. Nothing in the package
+interprets them. Without a provider, `metadata` is empty everywhere and the tiering collapses to the
+structural tiers with no devices at all.
+
+## Reading Open Commissioning's metadata
+
+| Key | Value | Meaning |
 |---|---|---|
-| `group` | Opens a level in the controller path | Joined with `.` |
-| `sampler` | Opens **no** level; prefixes its children instead | Joined with `_`, so the branch stays flat |
-| *(empty)* | No framework meaning | Unity transform grouping only — invisible to the controller |
+| `plcPath` | `MAIN.FG_01.P_Reader` | Position in the controller symbol tree |
+| `hierarchyRole` | `group` | Opens a level in the controller path, joined with `.` |
+| | `sampler` | Opens **no** level; prefixes its children instead, joined with `_`, so the branch stays flat |
+| `deviceType` | `SensorBinary` | The device component's type. Present on devices only |
+| `aggregatedBy` | a panel name | A panel sampler folded this device into its own single symbol |
+| `simulationDevice` | `true` | The device exchanges nothing with the controller and no sampler explains why |
 
-A structural node may be real controller structure or pure Unity grouping. Check `hierarchyRole`
-before treating one as a controller level, and when a node has no role, **say so in the entry** —
-otherwise a reader will assume it is one.
+Check whether a structural target carries a `hierarchyRole` before treating it as a controller level,
+and when it has none, **say so in the entry** — otherwise a reader will assume it is one. A `plcPath`
+proves nothing on its own: every target has one, including pure structure.
 
-This mapping comes from whichever `IContextMetadataProvider` is installed. Without one, `plcPath`,
-`plcLinked` and `hierarchyRole` all export as `""` and the tiering collapses to the structural tiers,
-with no devices at all.
-
-## Carrying a device component is not the same as being a controller symbol
-
-A device whose link is disabled exchanges no data with the controller. `context_tree`, `context_get`
-and the export report this as `plcLinked`; `context_audit` lists the exceptions under
-`devicesWithoutPlcLink`.
-
-Three values, three meanings — and they are not interchangeable:
-
-| `plcLinked` | Means |
-|---|---|
-| `"true"` | A real controller symbol |
-| `"false"` | A device that exchanges nothing — aggregated into a parent's symbol, or simulation-only |
-| `""` | Not a device at all |
-
-Say so in the entry when a device is not a controller symbol: downstream code generation must not
-emit a symbol for it. Note that unlinked devices may share a resolved path with one another, which is
-harmless precisely because neither is linked.
+Carrying a device component is not the same as being a controller symbol. **Neither `aggregatedBy` nor
+`simulationDevice` produces one**, and downstream code generation must skip both — say so in the
+entry. Note that such devices may share a resolved `plcPath` with one another, which is harmless
+precisely because neither becomes a symbol.
 
 ## Aggregating components
 
@@ -58,7 +57,7 @@ Some frameworks let one component gather several children into a single controll
 operator panel exposing its buttons and lamps through one word, for example. Two consequences worth
 writing down when you meet one:
 
-- The children report `plcLinked: false` even though they are real devices.
+- The children carry `aggregatedBy` naming the parent, and are real devices all the same.
 - The **order** of the aggregated list determines the bit assignment, so reordering it silently
   changes what the controller reads. If the project has such a component, record the order in the
   parent's entry.

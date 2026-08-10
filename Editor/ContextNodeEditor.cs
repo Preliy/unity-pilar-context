@@ -14,15 +14,20 @@ namespace PILAR.Context.Editor
     /// drawn by <see cref="ContextEntryDrawer"/>, which supplies the multi-line scrollable value field.
     ///
     /// Above the list sits derived information the author needs but the node does not store: the
-    /// GameObject's other components, plus whatever an installed <see cref="IContextMetadataProvider"/>
-    /// contributes (under Open Commissioning, the resolved PLC path and link state). Below it,
-    /// duplicate and empty keys surface as warnings rather than being blocked, matching the
-    /// ContextNode API's own tolerance.
+    /// resolved topology path, the GameObject's other components, and whatever metadata an installed
+    /// <see cref="IContextMetadataProvider"/> contributes. Below it, duplicate and empty keys surface
+    /// as warnings rather than being blocked, matching the ContextNode API's own tolerance.
+    ///
+    /// The two topology overrides sit in a collapsed foldout: they are empty in the ordinary case,
+    /// where the topology follows transform parenting and the GameObject's name, and pushing them
+    /// down keeps the authored entries as the thing the inspector is about.
     /// </summary>
     [CustomEditor(typeof(ContextNode))]
     public class ContextNodeEditor : UnityEditor.Editor
     {
         private const string EntriesField = "_entries";
+        private const string TopologySegmentField = "_topologySegment";
+        private const string TopologyParentField = "_topologyParent";
 
         private HelpBox _derivedInfo;
         private VisualElement _warnings;
@@ -38,6 +43,8 @@ namespace PILAR.Context.Editor
             entries.style.marginTop = 4;
             root.Add(entries);
 
+            root.Add(BuildTopologyOverrides());
+
             _warnings = new VisualElement();
             root.Add(_warnings);
 
@@ -45,6 +52,24 @@ namespace PILAR.Context.Editor
             root.TrackSerializedObjectValue(serializedObject, _ => Refresh());
 
             return root;
+        }
+
+        private VisualElement BuildTopologyOverrides()
+        {
+            var foldout = new Foldout { text = "Topology", value = false };
+            foldout.style.marginTop = 4;
+
+            foldout.Add(new HelpBox(
+                "Empty means the GameObject's name and the nearest ancestor Context Node. " +
+                "Set these only where the topology should differ from the scene hierarchy.",
+                HelpBoxMessageType.None));
+
+            foldout.Add(new PropertyField(
+                serializedObject.FindProperty(TopologySegmentField), "Segment"));
+            foldout.Add(new PropertyField(
+                serializedObject.FindProperty(TopologyParentField), "Parent"));
+
+            return foldout;
         }
 
         private void Refresh()
@@ -62,15 +87,15 @@ namespace PILAR.Context.Editor
 
             var lines = new List<string>
             {
+                $"Topology: {ContextTopologyPath.Resolve(node.transform)}",
                 $"Components: {(components.Length > 0 ? string.Join(", ", components) : "-")}"
             };
 
-            // Only shown when a metadata provider supplies them, so a project without a twin
-            // framework installed gets a clean panel instead of a row of dashes.
-            var path = ContextMetadataRegistry.Path(node.transform);
-            if (!string.IsNullOrEmpty(path)) lines.Insert(0, $"PLC path: {path}");
-
-            lines.AddRange(ContextMetadataRegistry.Notes(node.transform));
+            // Rendered verbatim under the provider's own keys, so a project without a twin framework
+            // installed gets a clean panel instead of a row of dashes, and a framework can surface a
+            // new fact here without this file learning about it.
+            lines.AddRange(ContextMetadataRegistry.Metadata(node.transform)
+                .Select(entry => $"{entry.key}: {entry.value}"));
 
             _derivedInfo.text = string.Join("\n", lines);
         }
@@ -99,6 +124,16 @@ namespace PILAR.Context.Editor
             {
                 _warnings.Add(new HelpBox(
                     "One or more entries have an empty key.",
+                    HelpBoxMessageType.Warning));
+            }
+
+            // A separator inside a segment makes the topology path unsplittable downstream. Warned
+            // rather than stripped: silently rewriting an authored name is worse than saying so.
+            if (node.TopologySegment != null && node.TopologySegment.Contains(ContextTopologyPath.Separator))
+            {
+                _warnings.Add(new HelpBox(
+                    $"The topology segment contains '{ContextTopologyPath.Separator}', which separates " +
+                    "path levels. Downstream readers cannot split this path correctly.",
                     HelpBoxMessageType.Warning));
             }
         }

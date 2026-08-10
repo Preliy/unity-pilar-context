@@ -97,10 +97,11 @@ One exported node:
 ```json
 {
   "name": "P_Reader",
-  "unityPath": "Project/FG_01/P_Reader",
-  "plcPath": "FG_01.P_Reader",
-  "plcLinked": "true",
-  "hierarchyRole": "",
+  "scenePath": "Project/Geometry/FG_01/P_Reader",
+  "topologyPath": "Project/FG_01/P_Reader",
+  "metadata": [
+    { "key": "plcPath", "value": "MAIN.FG_01.P_Reader" }
+  ],
   "components": ["SensorBinary", "TagReader"],
   "context": [
     { "key": "Function", "value": "Reads the RFID tag on the incoming part to confirm identity." }
@@ -108,6 +109,11 @@ One exported node:
   "children": []
 }
 ```
+
+`scenePath` is where the object lives in Unity; `topologyPath` is where it lives in the structure you
+authored, which skips every level you did not annotate. `metadata` carries whatever an installed twin
+framework knows, under that framework's own keys — nothing in the package interprets them, which is
+what keeps the schema free of any one framework's vocabulary.
 
 ## Agent skills
 

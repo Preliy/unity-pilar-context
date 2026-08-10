@@ -9,17 +9,19 @@ namespace PILAR.Context.Pipeline
 {
     /// <summary>
     /// Classifies GameObjects in a twin into the four context tiers, and resolves the addressing
-    /// schemes (<c>unityPath</c>, framework <c>plcPath</c>, bare name) the CLI commands accept.
+    /// schemes (<c>scenePath</c>, <c>topologyPath</c>, a framework path from metadata, bare name)
+    /// the CLI commands accept.
     ///
     /// Tier predicates are evaluated in order — self-is-device is checked before has-device-in-subtree,
     /// because devices nest (e.g. Y_CapsSource contains M_Conveyor).
     ///
-    /// Device-ness and path resolution come from
-    /// <see cref="CtxEditor.ContextMetadataRegistry"/> rather than any specific twin framework, so
-    /// these commands work — with a flatter tier structure — in a project with no provider installed.
+    /// Device-ness and metadata come from <see cref="CtxEditor.ContextMetadataRegistry"/> rather than
+    /// any specific twin framework, so these commands work — with a flatter tier structure — in a
+    /// project with no provider installed.
     /// </summary>
     public static class ContextTargets
     {
+        /// <summary>Root GameObject name assumed when a command is not told otherwise.</summary>
         public const string DefaultRoot = "Project";
 
         public const int TierMachine = 0;
@@ -92,8 +94,8 @@ namespace PILAR.Context.Pipeline
             };
         }
 
-        /// <summary>Slash-delimited path from <paramref name="root"/> inclusive, e.g. Project/FG_01/P_Reader.</summary>
-        public static string UnityPath(Transform t, Transform root)
+        /// <summary>Slash-delimited scene path from <paramref name="root"/> inclusive, e.g. Project/FG_01/P_Reader.</summary>
+        public static string ScenePath(Transform t, Transform root)
         {
             var parts = new List<string>();
             var cur = t;
@@ -125,8 +127,12 @@ namespace PILAR.Context.Pipeline
         }
 
         /// <summary>
-        /// Accepts a unityPath (Project/FG_01/P_Reader), an OC plcPath (MAIN.FG_01.P_Reader), or a
-        /// bare GameObject name when that name is unique under the root.
+        /// Accepts a scenePath (Project/FG_01/P_Reader), a topologyPath, a framework path a provider
+        /// published as metadata (under Open Commissioning, MAIN.FG_01.P_Reader), or a bare
+        /// GameObject name — the last two only when they identify exactly one object under the root.
+        ///
+        /// The metadata step is what keeps a framework's own addressing usable without this file
+        /// knowing which key carries it: any metadata value may be a handle, so long as it is unique.
         /// </summary>
         public static Transform Resolve(string target, Transform root)
         {
@@ -137,22 +143,35 @@ namespace PILAR.Context.Pipeline
             var all = root.GetComponentsInChildren<Transform>(true);
 
             foreach (var t in all)
-                if (UnityPath(t, root) == needle) return t;
+                if (ScenePath(t, root) == needle) return t;
 
             foreach (var t in all)
-                if (string.Equals(CtxEditor.ContextMetadataRegistry.Path(t), needle, StringComparison.OrdinalIgnoreCase))
-                    return t;
+                if (CtxEditor.ContextTopologyPath.Resolve(t) == needle) return t;
+
+            var byMetadata = all.Where(t => HasMetadataValue(t, needle)).ToList();
+            if (byMetadata.Count == 1) return byMetadata[0];
+            if (byMetadata.Count > 1)
+                throw new ArgumentException(
+                    $"Target '{needle}' is ambiguous — {byMetadata.Count} GameObjects publish that " +
+                    $"metadata value. Use a full scenePath instead, e.g. '{ScenePath(byMetadata[0], root)}'.");
 
             var byName = all.Where(t => t.name == needle).ToList();
             if (byName.Count == 1) return byName[0];
             if (byName.Count > 1)
                 throw new ArgumentException(
                     $"Target '{needle}' is ambiguous — {byName.Count} GameObjects share that name. " +
-                    $"Use a full unityPath instead, e.g. '{UnityPath(byName[0], root)}'.");
+                    $"Use a full scenePath instead, e.g. '{ScenePath(byName[0], root)}'.");
 
             throw new ArgumentException(
                 $"No GameObject found for target '{needle}' under '{root.name}'. " +
-                "Expected a unityPath (Project/FG_01/P_Reader), a plcPath (MAIN.FG_01.P_Reader), or a unique name.");
+                "Expected a scenePath (Project/FG_01/P_Reader), a topologyPath, a framework path from " +
+                "metadata, or a unique name.");
+        }
+
+        private static bool HasMetadataValue(Transform t, string needle)
+        {
+            return CtxEditor.ContextMetadataRegistry.Metadata(t)
+                .Any(entry => string.Equals(entry.value, needle, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>Prefab asset path backing this object, or null when it is a plain scene object.</summary>
@@ -198,31 +217,14 @@ namespace PILAR.Context.Pipeline
         }
 
         /// <summary>
-        /// Whether this device actually exchanges data with the PLC.
-        ///
-        /// Being a device is not the same as being a PLC symbol: a device whose link is disabled is
-        /// internal only — either simulation-side feedback, or a component a sampler aggregates into
-        /// its parent's single symbol. Downstream code generation must not emit symbols for these.
-        ///
-        /// Null for anything that is not a device.
+        /// Whatever an installed provider knows about this target, under the framework's own keys.
+        /// Empty when no provider is installed or none recognises the target.
         /// </summary>
-        public static bool? PlcLinked(Transform t)
+        public static ContextEntryDto[] Metadata(Transform t)
         {
-            return CtxEditor.ContextMetadataRegistry.LinkState(t);
-        }
-
-        /// <summary>
-        /// This node's role in the framework's own project tree, which its components define — not
-        /// the Unity transform parenting.
-        ///
-        /// "group"   — opens a new level in the PLC path (joined with '.').
-        /// "sampler" — opens no level; prefixes its children's names instead (joined with '_'), so
-        ///             FG_Transport stays flat.
-        /// ""        — opens no level and has no framework meaning: Unity transform grouping only.
-        /// </summary>
-        public static string HierarchyRole(Transform t)
-        {
-            return CtxEditor.ContextMetadataRegistry.Role(t);
+            return CtxEditor.ContextMetadataRegistry.Metadata(t)
+                .Select(entry => new ContextEntryDto { key = entry.key, value = entry.value })
+                .ToArray();
         }
 
         public static ContextTargetInfo Describe(Transform t, Transform root)
@@ -233,12 +235,11 @@ namespace PILAR.Context.Pipeline
             return new ContextTargetInfo
             {
                 name = t.name,
-                unityPath = UnityPath(t, root),
-                plcPath = CtxEditor.ContextMetadataRegistry.Path(t),
+                scenePath = ScenePath(t, root),
+                topologyPath = CtxEditor.ContextTopologyPath.Resolve(t),
                 tier = tier,
                 tierName = TierName(tier),
-                plcLinked = PlcLinked(t),
-                hierarchyRole = HierarchyRole(t),
+                metadata = Metadata(t),
                 components = Components(t),
                 hasNode = node != null,
                 entryCount = node != null ? node.Entries.Count : 0,
@@ -252,14 +253,14 @@ namespace PILAR.Context.Pipeline
     public class ContextTargetInfo
     {
         public string name;
-        public string unityPath;
-        public string plcPath;
+        /// <summary>Position in the Unity scene hierarchy, from the walk root inclusive.</summary>
+        public string scenePath;
+        /// <summary>Position in the ContextNode topology; empty when this target carries no node.</summary>
+        public string topologyPath;
         public int tier;
         public string tierName;
-        /// <summary>True when this device exchanges data with the PLC; null when not a device.</summary>
-        public bool? plcLinked;
-        /// <summary>"group" | "sampler" | "" — this node's role in the framework's project tree.</summary>
-        public string hierarchyRole;
+        /// <summary>Framework facts under the framework's own keys; empty with no provider installed.</summary>
+        public ContextEntryDto[] metadata;
         public string[] components;
         public bool hasNode;
         public int entryCount;

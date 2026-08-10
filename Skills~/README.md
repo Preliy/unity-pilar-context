@@ -43,8 +43,9 @@ Claude Code picks them up on the next session; no registration step.
 - **`com.unity.pipeline`**, which is what registers the `context_*` commands. Without it the export
   menu item still works but the skills have nothing to drive.
 - **Optionally a twin framework integration** such as `com.open-commissioning.core`. Without one
-  there are no devices, `plcPath` / `plcLinked` / `hierarchyRole` all come back empty, and the tiering
-  collapses to `machine` and `group`. The skills still work — they just have less to say.
+  there are no devices, `metadata` comes back empty on every target, and the tiering collapses to
+  `machine` and `group`. `scenePath` and `topologyPath` are unaffected — they do not come from an
+  integration. The skills still work — they just have less to say.
 
 ## Adapting them
 

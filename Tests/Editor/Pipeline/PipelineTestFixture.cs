@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using PILAR.Context.Editor;
 using PILAR.Context.Editor.Tests;
@@ -54,6 +55,14 @@ namespace PILAR.Context.Pipeline.Tests
             var t = Child(parent, name);
             Provider.DeviceNames.Add(name);
             return t;
+        }
+
+        /// <summary>Makes the fake provider publish these entries for one transform, by name.</summary>
+        protected void SetMetadata(string transformName, params (string key, string value)[] entries)
+        {
+            Provider.MetadataFunc = t => t.name != transformName
+                ? System.Array.Empty<ContextEntry>()
+                : entries.Select(e => new ContextEntry { key = e.key, value = e.value }).ToArray();
         }
 
         protected static ContextNode NodeWith(Transform t, params (string key, string value)[] entries)

@@ -13,8 +13,8 @@ namespace PILAR.Context.Editor
     ///
     /// Discovery is by <c>TypeCache</c>, which the Editor maintains as part of the compilation
     /// pipeline — there is no assembly scan and no registration call. When no provider is installed
-    /// every accessor returns its neutral value and the package degrades to plain key/value context
-    /// on a plain transform hierarchy.
+    /// every accessor returns its neutral value and the package degrades to authored key/value
+    /// context on the topology the author built, with no metadata attached.
     ///
     /// The cache is a plain static: statics reset on domain reload, which is exactly when the set of
     /// compiled providers can change, so no explicit invalidation is needed.
@@ -72,47 +72,36 @@ namespace PILAR.Context.Editor
             return Providers.Any(p => p.IsDevice(t));
         }
 
-        /// <summary>Framework path for this Transform, or empty when no provider supplies one.</summary>
-        public static string Path(Transform t)
+        /// <summary>
+        /// Every provider's metadata for this Transform, merged in <c>Order</c>. Each provider's own
+        /// entry order is kept, and the first provider to answer for a key owns it — a later one
+        /// cannot overwrite the answer, only add keys nobody claimed.
+        ///
+        /// Entries with a blank key or a blank value are dropped: a fact the framework does not know
+        /// is an absent entry, never an empty one.
+        /// </summary>
+        public static IReadOnlyList<ContextEntry> Metadata(Transform t)
         {
+            var merged = new List<ContextEntry>();
+            var claimed = new HashSet<string>();
+
             foreach (var provider in Providers)
             {
-                var path = provider.ResolvePath(t);
-                if (!string.IsNullOrEmpty(path)) return path;
+                var entries = provider.ResolveMetadata(t);
+                if (entries == null) continue;
+
+                foreach (var entry in entries)
+                {
+                    if (entry == null) continue;
+                    if (string.IsNullOrWhiteSpace(entry.key)) continue;
+                    if (string.IsNullOrWhiteSpace(entry.value)) continue;
+                    if (!claimed.Add(entry.key)) continue;
+
+                    merged.Add(new ContextEntry { key = entry.key, value = entry.value });
+                }
             }
 
-            return string.Empty;
-        }
-
-        /// <summary>Controller link state, or null when this Transform is not a device.</summary>
-        public static bool? LinkState(Transform t)
-        {
-            foreach (var provider in Providers)
-            {
-                var state = provider.ResolveLinkState(t);
-                if (state.HasValue) return state;
-            }
-
-            return null;
-        }
-
-        /// <summary>Structural role in the framework tree, or empty when it opens no level.</summary>
-        public static string Role(Transform t)
-        {
-            foreach (var provider in Providers)
-            {
-                var role = provider.ResolveRole(t);
-                if (!string.IsNullOrEmpty(role)) return role;
-            }
-
-            return string.Empty;
-        }
-
-        /// <summary>Derived-information lines for the inspector, across all providers.</summary>
-        public static IEnumerable<string> Notes(Transform t)
-        {
-            return Providers.SelectMany(p => p.InspectorNotes(t) ?? Enumerable.Empty<string>())
-                .Where(note => !string.IsNullOrEmpty(note));
+            return merged;
         }
     }
 }

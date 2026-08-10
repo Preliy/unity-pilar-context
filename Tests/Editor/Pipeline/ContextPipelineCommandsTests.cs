@@ -10,7 +10,7 @@ namespace PILAR.Context.Pipeline.Tests
         // ------------------------------------------------------------ context_tree
 
         [Test]
-        public void ContextTree_FlatIsOrderedByUnityPathOrdinal()
+        public void ContextTree_FlatIsOrderedByScenePathOrdinal()
         {
             BuildStandardFixture();
             var result = (ContextTreeFlatResult)ContextPipelineCommands.ContextTree(flat: true);
@@ -19,7 +19,7 @@ namespace PILAR.Context.Pipeline.Tests
             Assert.AreEqual("all", result.scope);
             Assert.AreEqual(result.targets.Count, result.count);
 
-            var paths = result.targets.Select(t => t.unityPath).ToArray();
+            var paths = result.targets.Select(t => t.scenePath).ToArray();
             CollectionAssert.AreEqual(paths.OrderBy(p => p, StringComparer.Ordinal).ToArray(), paths);
         }
 
@@ -148,31 +148,20 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
-        public void ContextAudit_SplitsTheProjectTreeByRole()
+        public void ContextAudit_ReportsCoverageWithoutAnyFrameworkVocabulary()
         {
             BuildStandardFixture();
-            Provider.PathFunc = t => "MAIN." + t.name;
-            Provider.RoleFunc = t => t.name == "FG_01" ? "group" : t.name == "Station" ? "sampler" : string.Empty;
+            SetMetadata("FG_01", ("hierarchyRole", "group"));
 
             var result = (ContextAuditResult)ContextPipelineCommands.ContextAudit();
 
-            CollectionAssert.Contains(result.projectTree.groups, "MAIN.FG_01");
-            CollectionAssert.Contains(result.projectTree.nameSamplers, "MAIN.Station");
-            // FG_02 has no role and is not a device, so it is Unity-only grouping.
-            CollectionAssert.Contains(result.projectTree.unityOnlyGrouping, "Project/FG_02");
-        }
-
-        [Test]
-        public void ContextAudit_ListsDevicesThatDoNotTalkToTheController()
-        {
-            BuildStandardFixture();
-            Provider.LinkStateFunc = t => t.name == "Sensor" ? (bool?)false : null;
-
-            var result = (ContextAuditResult)ContextPipelineCommands.ContextAudit();
-
-            CollectionAssert.AreEqual(
-                new[] { "Project/FG_01/Station/Sensor" }, result.devicesWithoutPlcLink);
-            Assert.AreEqual(0, result.plcLinked);
+            // The audit counts what is annotated and what is not. Anything a framework knows stays in
+            // each target's metadata, which context_tree returns - the audit does not aggregate over
+            // a vocabulary it does not own.
+            Assert.AreEqual(5, result.total);
+            Assert.AreEqual(0, result.withNode);
+            Assert.AreEqual(0, result.nonEmpty);
+            CollectionAssert.Contains(result.missingNode, "Project/FG_01");
         }
 
         // ------------------------------------------------------------- context_set

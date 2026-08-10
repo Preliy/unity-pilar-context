@@ -161,18 +161,18 @@ namespace PILAR.Context.Pipeline.Tests
         // ------------------------------------------------------------------ paths
 
         [Test]
-        public void UnityPath_IsSlashDelimitedFromRootInclusive()
+        public void ScenePath_IsSlashDelimitedFromRootInclusive()
         {
             BuildStandardFixture();
             var sensor = Root.transform.Find("FG_01/Station/Sensor");
             Assert.AreEqual("Project/FG_01/Station/Sensor",
-                ContextTargets.UnityPath(sensor, Root.transform));
+                ContextTargets.ScenePath(sensor, Root.transform));
         }
 
         [Test]
-        public void UnityPath_OfRootIsJustTheRootName()
+        public void ScenePath_OfRootIsJustTheRootName()
         {
-            Assert.AreEqual("Project", ContextTargets.UnityPath(Root.transform, Root.transform));
+            Assert.AreEqual("Project", ContextTargets.ScenePath(Root.transform, Root.transform));
         }
 
         [Test]
@@ -210,7 +210,7 @@ namespace PILAR.Context.Pipeline.Tests
         // --------------------------------------------------------------- resolving
 
         [Test]
-        public void Resolve_ByUnityPath()
+        public void Resolve_ByScenePath()
         {
             BuildStandardFixture();
             var t = ContextTargets.Resolve("Project/FG_01/Station/Sensor", Root.transform);
@@ -218,13 +218,44 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
-        public void Resolve_ByFrameworkPathIgnoringCase()
+        public void Resolve_ByTopologyPath()
         {
             BuildStandardFixture();
-            Provider.PathFunc = t => t.name == "Sensor" ? "MAIN.FG_01.Sensor" : string.Empty;
+            var station = Root.transform.Find("FG_01/Station");
+            var sensor = Root.transform.Find("FG_01/Station/Sensor");
+            NodeWith(station);
+            NodeWith(sensor);
 
+            // FG_01 carries no node, so it is absent from the topology path even though the scene
+            // path goes through it.
+            Assert.AreSame(sensor, ContextTargets.Resolve("Station/Sensor", Root.transform));
+        }
+
+        [Test]
+        public void Resolve_ByFrameworkPathFromMetadataIgnoringCase()
+        {
+            BuildStandardFixture();
+            SetMetadata("Sensor", ("plcPath", "MAIN.FG_01.Sensor"));
+
+            // Any metadata value is a handle, whatever key it arrived under — that is what keeps a
+            // framework's own addressing working without ContextTargets knowing the framework.
             Assert.AreEqual("Sensor", ContextTargets.Resolve("MAIN.FG_01.Sensor", Root.transform).name);
             Assert.AreEqual("Sensor", ContextTargets.Resolve("main.fg_01.sensor", Root.transform).name);
+        }
+
+        [Test]
+        public void Resolve_AmbiguousMetadataValueThrowsAndSuggestsAFullPath()
+        {
+            BuildStandardFixture();
+            Provider.MetadataFunc = t => t.name == "FG_01" || t.name == "FG_02"
+                ? new[] { new ContextEntry { key = "plcPath", value = "MAIN.Shared" } }
+                : System.Array.Empty<ContextEntry>();
+
+            var ex = Assert.Throws<ArgumentException>(
+                () => ContextTargets.Resolve("MAIN.Shared", Root.transform));
+
+            StringAssert.Contains("ambiguous", ex.Message);
+            StringAssert.Contains("Project/FG_0", ex.Message);
         }
 
         [Test]
@@ -274,7 +305,7 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
-        public void Resolve_PrefersUnityPathOverBareName()
+        public void Resolve_PrefersScenePathOverBareName()
         {
             // A GameObject literally named like a path must not shadow the real path match.
             var fg = Child(Root.transform, "FG_01");
@@ -310,7 +341,7 @@ namespace PILAR.Context.Pipeline.Tests
             var info = ContextTargets.Describe(station, Root.transform);
 
             Assert.AreEqual("Station", info.name);
-            Assert.AreEqual("Project/FG_01/Station", info.unityPath);
+            Assert.AreEqual("Project/FG_01/Station", info.scenePath);
             Assert.AreEqual(ContextTargets.TierAssembly, info.tier);
             Assert.AreEqual("assembly", info.tierName);
             Assert.IsTrue(info.hasNode);
@@ -330,32 +361,32 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
-        public void Describe_PlcLinkedIsNullForNonDevices()
+        public void Describe_CarriesProviderMetadata()
         {
-            // Null and false mean different things downstream: null is "not a device at all", false is
-            // "a device that exchanges nothing with the controller". Code generation treats them
-            // differently, so this must not collapse to false.
             BuildStandardFixture();
-            Provider.LinkStateFunc = t => t.name == "Sensor" ? (bool?)false : null;
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"), ("hierarchyRole", "group"));
 
-            var station = ContextTargets.Describe(Root.transform.Find("FG_01/Station"), Root.transform);
-            var sensor = ContextTargets.Describe(Root.transform.Find("FG_01/Station/Sensor"), Root.transform);
+            var fg1 = ContextTargets.Describe(Root.transform.Find("FG_01"), Root.transform);
+            var fg2 = ContextTargets.Describe(Root.transform.Find("FG_02"), Root.transform);
 
-            Assert.IsNull(station.plcLinked);
-            Assert.AreEqual(false, sensor.plcLinked);
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=MAIN.FG_01", "hierarchyRole=group" },
+                fg1.metadata.Select(e => $"{e.key}={e.value}").ToArray());
+            CollectionAssert.IsEmpty(fg2.metadata);
         }
 
         [Test]
-        public void Describe_CarriesProviderPathAndRole()
+        public void Describe_TopologyPathIsEmptyWithoutANode()
         {
             BuildStandardFixture();
-            Provider.PathFunc = t => t.name == "FG_01" ? "MAIN.FG_01" : string.Empty;
-            Provider.RoleFunc = t => t.name == "FG_01" ? "group" : string.Empty;
+            var station = Root.transform.Find("FG_01/Station");
 
-            var info = ContextTargets.Describe(Root.transform.Find("FG_01"), Root.transform);
+            Assert.AreEqual(string.Empty,
+                ContextTargets.Describe(station, Root.transform).topologyPath);
 
-            Assert.AreEqual("MAIN.FG_01", info.plcPath);
-            Assert.AreEqual("group", info.hierarchyRole);
+            NodeWith(station);
+            Assert.AreEqual("Station",
+                ContextTargets.Describe(station, Root.transform).topologyPath);
         }
 
         [Test]

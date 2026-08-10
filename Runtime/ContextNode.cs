@@ -19,8 +19,39 @@ namespace PILAR.Context
     {
         public IReadOnlyList<ContextEntry> Entries => _entries;
 
+        /// <summary>
+        /// Name this node contributes to the topology path. Empty means the GameObject's own name,
+        /// which is the usual case - set it only when the logical name differs from the scene name.
+        /// </summary>
+        public string TopologySegment
+        {
+            get => _topologySegment;
+            set => _topologySegment = value;
+        }
+
+        /// <summary>
+        /// Node this one hangs under in the topology, when that is not the nearest ancestor carrying
+        /// a ContextNode. Lets the logical machine structure diverge from transform parenting, which
+        /// is arranged for the scene rather than for meaning.
+        /// </summary>
+        public ContextNode TopologyParent
+        {
+            get => _topologyParent;
+            set => _topologyParent = value;
+        }
+
+        /// <summary>The segment actually used in the path: the override when set, the name otherwise.</summary>
+        public string ResolvedSegment =>
+            string.IsNullOrWhiteSpace(_topologySegment) ? gameObject.name : _topologySegment.Trim();
+
         [SerializeField]
         private List<ContextEntry> _entries = new();
+
+        [SerializeField]
+        private string _topologySegment;
+
+        [SerializeField]
+        private ContextNode _topologyParent;
 
         public bool ContainsKey(string key)
         {

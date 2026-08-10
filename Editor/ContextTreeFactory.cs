@@ -10,27 +10,23 @@ namespace PILAR.Context.Editor
     public class ContextExportNode
     {
         public string name;
-        public string unityPath;
+        /// <summary>Where the object sits in the Unity scene, e.g. Project/Geometry/FG_01/P_Reader.</summary>
+        public string scenePath;
         /// <summary>
-        /// Framework-side logical path, supplied by an <see cref="IContextMetadataProvider"/> — the
-        /// PLC symbol path under Open Commissioning. Empty when no provider is installed.
+        /// Where the object sits in the topology — the logical structure the author defines by
+        /// placing <see cref="ContextNode"/>s, which skips scene levels that carry no node. Empty
+        /// for a node-less object. See <see cref="ContextTopologyPath"/>.
         /// </summary>
-        public string plcPath;
+        public string topologyPath;
         /// <summary>
-        /// "true" / "false" for devices, "" for everything else. A device whose link is disabled
-        /// exchanges no data with the controller — it is aggregated into a parent sampler's symbol,
-        /// or exists only for simulation. Downstream code generation must not emit a symbol for
-        /// those. String rather than bool? because JsonUtility cannot serialize nullable value types.
+        /// Facts an installed <see cref="IContextMetadataProvider"/> knows about this object, under
+        /// keys the framework chooses — a framework-side path, a structural role, whether the object
+        /// is simulated. Empty when no provider is installed or none has anything to say. An absent
+        /// key means the framework did not state that fact, not that the fact is false.
         /// </summary>
-        public string plcLinked;
-        /// <summary>
-        /// This node's role in the framework's own tree, which its components define — not Unity
-        /// transform parenting. Under Open Commissioning: "group" opens a level in the PLC path
-        /// (joined with '.'); "sampler" opens none and prefixes its children's names instead (joined
-        /// with '_'); "" means the node is Unity-side grouping the PLC never sees.
-        /// </summary>
-        public string hierarchyRole;
+        public List<ContextEntry> metadata;
         public List<string> components;
+        /// <summary>The authored key/value context — the point of the whole export.</summary>
         public List<ContextEntry> context;
         public List<ContextExportNode> children;
     }
@@ -52,6 +48,11 @@ namespace PILAR.Context.Editor
     /// counts, and any installed <see cref="IContextMetadataProvider"/> may additionally vouch for a
     /// subtree. With no provider installed the export is simply narrower — every node a human
     /// annotated, and nothing else.
+    ///
+    /// Each node is described three ways: where it sits in the scene, where it sits in the topology
+    /// the author defined, and whatever a framework knows about it. Only the last of those is
+    /// framework-specific, and it stays as opaque key/value metadata so the schema itself never
+    /// names a framework's concepts.
     /// </summary>
     public static class ContextTreeFactory
     {
@@ -74,28 +75,24 @@ namespace PILAR.Context.Editor
 
         private static ContextExportNode BuildNode(Transform origin, string parentPath)
         {
-            var unityPath = string.IsNullOrEmpty(parentPath) ? origin.name : parentPath + "/" + origin.name;
+            var scenePath = string.IsNullOrEmpty(parentPath) ? origin.name : parentPath + "/" + origin.name;
 
             var children = new List<ContextExportNode>();
             for (var i = 0; i < origin.childCount; i++)
             {
                 var child = origin.GetChild(i);
                 if (!HasMeaningfulContent(child)) continue;
-                children.Add(BuildNode(child, unityPath));
+                children.Add(BuildNode(child, scenePath));
             }
 
             var contextNode = origin.GetComponent<ContextNode>();
-            var linked = ContextMetadataRegistry.LinkState(origin);
 
             return new ContextExportNode
             {
                 name = origin.name,
-                unityPath = unityPath,
-                plcPath = ContextMetadataRegistry.Path(origin),
-                plcLinked = linked == null
-                    ? string.Empty
-                    : linked.Value ? "true" : "false",
-                hierarchyRole = ContextMetadataRegistry.Role(origin),
+                scenePath = scenePath,
+                topologyPath = ContextTopologyPath.Resolve(origin),
+                metadata = ContextMetadataRegistry.Metadata(origin).ToList(),
                 components = ContextComponentFilter.GetRelevantComponentNames(origin.gameObject).ToList(),
                 context = contextNode != null ? contextNode.Entries.ToList() : new List<ContextEntry>(),
                 children = children

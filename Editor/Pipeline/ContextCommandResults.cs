@@ -7,6 +7,8 @@ namespace PILAR.Context.Pipeline
     // Public fields rather than properties, matching ContextTargetInfo, which already round-trips
     // through the CLI serializer. Field names and their order are the CLI's wire contract - agents and
     // the shipped skills read these keys by name, so renaming or reordering one is a breaking change.
+    // The 1.2 rename (unityPath -> scenePath, plcPath -> topologyPath, plcLinked and hierarchyRole
+    // folded into metadata) was exactly that, which is why the skills ship in the same release.
     //
     // Where a command has two genuinely different responses (flat vs nested, wrote vs skipped) each
     // gets its own type rather than one union with half the fields left null: the commands already
@@ -40,12 +42,11 @@ namespace PILAR.Context.Pipeline
     public class ContextGetResult
     {
         public string name;
-        public string unityPath;
-        public string plcPath;
+        public string scenePath;
+        public string topologyPath;
         public int tier;
         public string tierName;
-        public bool? plcLinked;
-        public string hierarchyRole;
+        public ContextEntryDto[] metadata;
         public string[] components;
         public bool hasNode;
         public string prefabAsset;
@@ -60,20 +61,13 @@ namespace PILAR.Context.Pipeline
         public int total;
         public int withNode;
         public int nonEmpty;
-        public int plcLinked;
     }
 
     /// <summary>
-    /// The framework's own project tree, which its components define rather than transform parenting.
-    /// Groups open a path level; samplers flatten into a name prefix instead.
+    /// Coverage only, and deliberately framework-neutral: how much of the twin is annotated and what
+    /// is still missing. Facts that belong to a twin framework live in each target's metadata, which
+    /// context_tree returns — this command does not aggregate over a vocabulary it does not own.
     /// </summary>
-    public class ProjectTreeSummary
-    {
-        public string[] groups;
-        public string[] nameSamplers;
-        public string[] unityOnlyGrouping;
-    }
-
     public class ContextAuditResult
     {
         public string root;
@@ -81,10 +75,7 @@ namespace PILAR.Context.Pipeline
         public int total;
         public int withNode;
         public int nonEmpty;
-        public int plcLinked;
         public List<TierSummary> byTier;
-        public ProjectTreeSummary projectTree;
-        public string[] devicesWithoutPlcLink;
         public string[] missingNode;
         public string[] emptyNode;
     }
@@ -92,7 +83,7 @@ namespace PILAR.Context.Pipeline
     public class ContextSetResult
     {
         public string target;
-        public string plcPath;
+        public string topologyPath;
         public string tierName;
         public string wroteTo;
         public string[] applied;
@@ -120,7 +111,7 @@ namespace PILAR.Context.Pipeline
     public class ContextPrefabWriteResult
     {
         public string target;
-        public string plcPath;
+        public string topologyPath;
         public string tierName;
         public string wroteTo;
         public string prefabAsset;
