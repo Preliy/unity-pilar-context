@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.3.0](https://github.com/Preliy/unity-pilar-context/compare/v1.2.0...v1.3.0) (2026-08-10)
+
+
+### Features
+
+* framework-agnostic context export ([43935cf](https://github.com/Preliy/unity-pilar-context/commit/43935cfd03f327f70817fbd7c0746a96a355ae8e))
+
 # [1.2.0](https://github.com/Preliy/unity-pilar-context/compare/v1.1.0...v1.2.0) (2026-08-09)
 
 
