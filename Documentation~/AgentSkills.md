@@ -44,8 +44,9 @@ Copy the three folders into your project's `.claude/skills/`, at the project roo
 - A **running Editor** with the project open. Every skill gates on `unity status` reporting `ready`.
 - The **Unity CLI**, and **`com.unity.pipeline`** — that package is what registers the `context_*`
   commands.
-- Optionally a **twin framework integration**. Without one there are no devices, the framework fields
-  export as `""`, and the tiering collapses to `machine` and `group`.
+- Optionally a **twin framework integration**. Without one there are no devices, `metadata` comes back
+  empty on every target, and the tiering collapses to `machine` and `group`. `scenePath` and
+  `topologyPath` are unaffected — neither comes from an integration.
 
 ## The loop they implement
 

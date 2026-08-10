@@ -7,9 +7,14 @@ namespace PILAR.Context.Editor
     /// Optional integration point between this package and a digital twin framework.
     ///
     /// The package itself knows nothing about any specific twin framework: it stores, edits and
-    /// exports key/value context. A provider contributes the derived facts the package cannot
-    /// compute on its own — which subtrees are semantically relevant, which objects are devices,
-    /// and what their framework-side path and link state are.
+    /// exports key/value context, and derives the topology from the <see cref="ContextNode"/>s the
+    /// author placed. A provider contributes what is left — which subtrees are semantically
+    /// relevant, which objects are devices, and whatever facts the framework knows about an object
+    /// that the package cannot compute.
+    ///
+    /// Those facts travel as free-form key/value metadata under keys the framework itself chooses,
+    /// so a framework's vocabulary never has to be spelled into this package or into the export
+    /// schema. Nothing outside the provider interprets them.
     ///
     /// Implementations are discovered automatically by <see cref="ContextMetadataRegistry"/> via
     /// <c>TypeCache</c>, so they need no registration call. They must be concrete, non-generic and
@@ -22,8 +27,9 @@ namespace PILAR.Context.Editor
     public interface IContextMetadataProvider
     {
         /// <summary>
-        /// Precedence when several providers are installed; lower runs first, and the first
-        /// non-empty answer wins. Use 0 unless you deliberately need to override another provider.
+        /// Precedence when several providers are installed; lower runs first, and when two providers
+        /// both answer for the same key, the first one wins. Use 0 unless you deliberately need to
+        /// override another provider.
         /// </summary>
         int Order { get; }
 
@@ -37,28 +43,12 @@ namespace PILAR.Context.Editor
         bool IsDevice(Transform t);
 
         /// <summary>
-        /// The framework-side logical path of this Transform (for Open Commissioning, the PLC
-        /// symbol path). Empty when the framework has no path for it.
+        /// Everything the framework knows about this Transform, as key/value pairs of its own
+        /// choosing — a framework-side path, a structural role, whether the object is simulated.
+        /// Return an empty sequence when the Transform means nothing to this provider; omit a key
+        /// rather than returning an empty value for it, since an absent fact and a blank one are
+        /// not the same statement.
         /// </summary>
-        string ResolvePath(Transform t);
-
-        /// <summary>
-        /// Whether this device actually exchanges data with the controller. Null when the Transform
-        /// is not a device at all, which is a different statement from "a device that is disabled".
-        /// </summary>
-        bool? ResolveLinkState(Transform t);
-
-        /// <summary>
-        /// This Transform's structural role in the framework's own tree, which need not follow Unity
-        /// transform parenting. Open Commissioning uses "group" and "sampler". Empty when the
-        /// Transform opens no level in that tree.
-        /// </summary>
-        string ResolveRole(Transform t);
-
-        /// <summary>
-        /// Extra read-only lines for the ContextNode inspector's derived-information panel. Return
-        /// an empty sequence when there is nothing useful to show.
-        /// </summary>
-        IEnumerable<string> InspectorNotes(Transform t);
+        IEnumerable<ContextEntry> ResolveMetadata(Transform t);
     }
 }

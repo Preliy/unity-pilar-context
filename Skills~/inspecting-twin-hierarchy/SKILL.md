@@ -43,22 +43,34 @@ and will not appear in any listing.
 are left with `machine` and `group`. If a scene you expect to be full of devices reports none, that
 is the first thing to check.
 
-## Tiers are not the controller project tree
+## Three axes, not one
 
-Tiers describe documentation granularity. The controller's project tree is a **separate axis**,
-reported as `hierarchyRole` and `plcLinked` on every query.
+Every target reports three independent things. Do not read one for another.
 
-| Field | Value | Means |
+| Field | What it is |
+|---|---|
+| `tier` / `tierName` | Documentation granularity: `machine`, `group`, `assembly`, `device` |
+| `scenePath` | Where the object sits in the Unity hierarchy |
+| `topologyPath` | Where it sits in the authored `ContextNode` tree — un-annotated levels are absent, so this is shorter than `scenePath` and empty for a target with no node |
+| `metadata` | Key/value facts from whichever integration is installed, under **its** keys |
+
+`metadata` is an open vocabulary: nothing in the package defines or interprets the keys, and an absent
+key means the framework did not state that fact, not that it is false. Under Open Commissioning you
+will see:
+
+| Key | Value | Means |
 |---|---|---|
+| `plcPath` | `MAIN.FG_01.P_Reader` | Position in the controller symbol tree |
 | `hierarchyRole` | `group` | Opens a level in the controller path, joined with `.` |
 | | `sampler` | Opens **no** level; prefixes its children instead, joined with `_` |
-| | *(empty)* | No framework role — Unity grouping only, invisible to the controller |
-| `plcLinked` | `true` | A real controller symbol |
-| | `false` | A device whose link is off: aggregated into a parent's symbol, or simulation-only |
-| | *(empty)* | Not a device |
+| `deviceType` | `SensorBinary` | The device component's type. Present on devices only |
+| `aggregatedBy` | a panel name | A panel sampler folded this device into its own single symbol |
+| `simulationDevice` | `true` | The device talks to no controller and no sampler explains why |
 
-So a tier-2 `assembly` may be either real controller structure or pure Unity grouping. Check
-`hierarchyRole` before treating it as a controller level.
+So a tier-2 `assembly` may be either real controller structure or pure Unity grouping. Check whether
+it carries a `hierarchyRole` before treating it as a controller level. A target is a real controller
+symbol when it has a `deviceType` and **neither** `aggregatedBy` nor `simulationDevice` — every
+target resolves a `plcPath`, including pure structure, so the path alone proves nothing.
 
 ## Quick reference
 
@@ -66,7 +78,7 @@ So a tier-2 `assembly` may be either real controller structure or pure Unity gro
 # Overview: nested tree, structure only, 2 levels deep
 unity command context_tree --scope structural --depth 2
 
-# Every device as a flat list (name, unityPath, plcPath, components, node state)
+# Every device as a flat list (name, scenePath, topologyPath, metadata, components, node state)
 unity command context_tree --scope devices --flat --format json
 
 # What still has no context?
@@ -81,9 +93,10 @@ unity command context_get --target "P_Reader"
 unity command context_audit --format json
 ```
 
-`--target` accepts a **unityPath**, a framework **plcPath** (case-insensitive), or a **bare name**
-when it is unique under the root. A name matching several GameObjects returns an error listing a full
-path to disambiguate — read it and retry with the path.
+`--target` accepts a **scenePath**, a **topologyPath**, any **metadata value** that is unique under the
+root (case-insensitive — this is how a framework path like `MAIN.FG_01.P_Reader` still resolves), or a
+**bare name** when it is unique. An ambiguous value or name returns an error listing a full path to
+disambiguate — read it and retry with the path.
 
 `--scope` takes `all | structural | devices | missing`, where `missing` means *no `ContextNode` at
 all, or one with zero entries* — an empty node is not coverage.

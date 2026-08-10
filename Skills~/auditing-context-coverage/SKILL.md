@@ -59,8 +59,9 @@ unity command menu --path "PILAR/Context/Export Machine Context (JSON)"
 ```
 
 Writes `Assets/StreamingAssets/<SceneName>_Context.json` — a nested tree of
-`{name, unityPath, plcPath, plcLinked, hierarchyRole, components, context[], children[]}`, pruned to
-semantically relevant structure.
+`{name, scenePath, topologyPath, metadata[], components, context[], children[]}`, pruned to
+semantically relevant structure. `metadata` is a list of `{key, value}` pairs from whichever twin
+framework integration is installed, under that framework's own keys; it is `[]` when none is.
 
 ## Verify the export, do not assume it
 
@@ -95,7 +96,7 @@ bad = []
 def walk(x):
     for e in x.get('context', []):
         if not e.get('key','').strip() or not e.get('value','').strip():
-            bad.append((x['unityPath'], e.get('key')))
+            bad.append((x['scenePath'], e.get('key')))
     for c in x.get('children', []): walk(c)
 walk(d['root'])
 print('malformed entries:', bad or 'NONE')
@@ -106,13 +107,34 @@ Run this after any batch that wrote to prefab assets.
 
 ## Cross-check against the controller's own tree
 
-If your framework can export its device tree independently, diff the two: every device the export
-marks `plcLinked: "true"` should appear there, and nothing should appear that the export missed. A
-mismatch means the twin and the controller project have drifted, and the export must not be trusted
-for code generation until they agree.
+If your framework can export its device tree independently, diff the two: every device that should be
+a controller symbol must appear there, and nothing should appear that the export missed. A mismatch
+means the twin and the controller project have drifted, and the export must not be trusted for code
+generation until they agree.
 
-`context_audit` reports the same structure under `projectTree` (`groups`, `nameSamplers`,
-`unityOnlyGrouping`) and lists the exceptions under `devicesWithoutPlcLink`.
+Under Open Commissioning a node is a controller symbol when its `metadata` has a `deviceType` and
+neither `aggregatedBy` nor `simulationDevice`. Do not filter on `plcPath` alone — every node has one,
+including pure structure.
+
+`context_audit` deliberately reports **coverage only** — totals, per-tier counts, missing and empty
+nodes. It does not group by framework vocabulary, because the pipeline does not own that vocabulary.
+Build the controller-side view yourself from each target's `metadata`:
+
+```bash
+python -c "
+import json, sys, collections
+d = json.load(open(sys.argv[1]))
+facets = collections.defaultdict(collections.Counter)
+def walk(x):
+    for e in x.get('metadata', []): facets[e['key']][e['value']] += 1
+    for c in x.get('children', []): walk(c)
+walk(d['root'])
+for k, v in facets.items(): print(k, dict(v))
+" Assets/StreamingAssets/<SceneName>_Context.json
+```
+
+Under Open Commissioning that prints the `hierarchyRole` split (`group` / `sampler`) and the count of
+devices carrying `aggregatedBy` or `simulationDevice` — the ones that produce no controller symbol.
 
 ## Common mistakes
 

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -23,72 +24,103 @@ namespace PILAR.Context.Editor.Tests
 
         private Transform T => _go.transform;
 
+        private static void Install(params IContextMetadataProvider[] providers)
+        {
+            ContextMetadataRegistry.OverrideProviders(providers);
+        }
+
+        private static string[] Pairs(IEnumerable<ContextEntry> entries)
+        {
+            return entries.Select(e => $"{e.key}={e.value}").ToArray();
+        }
+
         [Test]
         public void NoProviders_YieldNeutralValues()
         {
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[0]);
+            Install();
 
-            Assert.AreEqual(string.Empty, ContextMetadataRegistry.Path(T));
-            Assert.IsNull(ContextMetadataRegistry.LinkState(T));
-            Assert.AreEqual(string.Empty, ContextMetadataRegistry.Role(T));
+            CollectionAssert.IsEmpty(ContextMetadataRegistry.Metadata(T));
             Assert.IsFalse(ContextMetadataRegistry.AnyDevice(T));
             Assert.IsFalse(ContextMetadataRegistry.AnyRelevant(T));
-            CollectionAssert.IsEmpty(ContextMetadataRegistry.Notes(T).ToArray());
         }
 
         [Test]
         public void SingleProvider_AnswersAreUsed()
         {
-            var provider = new FakeMetadataProvider { PathFunc = _ => "MAIN.Target" };
+            var provider = FakeMetadataProvider.Emitting(("plcPath", "MAIN.Target"));
             provider.DeviceNames.Add("Target");
             provider.RelevantNames.Add("Target");
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { provider });
+            Install(provider);
 
-            Assert.AreEqual("MAIN.Target", ContextMetadataRegistry.Path(T));
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=MAIN.Target" },
+                Pairs(ContextMetadataRegistry.Metadata(T)));
             Assert.IsTrue(ContextMetadataRegistry.AnyDevice(T));
             Assert.IsTrue(ContextMetadataRegistry.AnyRelevant(T));
         }
 
         [Test]
-        public void EarlierProviderWins_WhenBothAnswer()
+        public void ProviderEntryOrder_IsPreserved()
         {
-            var winner = new FakeMetadataProvider { PathFunc = _ => "winner" };
-            var loser = new FakeMetadataProvider { PathFunc = _ => "loser" };
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { winner, loser });
+            Install(FakeMetadataProvider.Emitting(("b", "1"), ("a", "2"), ("c", "3")));
 
-            Assert.AreEqual("winner", ContextMetadataRegistry.Path(T));
+            // Not sorted: a provider orders its own facts most-significant-first, and the export
+            // should read the way the framework meant it to.
+            CollectionAssert.AreEqual(
+                new[] { "b=1", "a=2", "c=3" },
+                Pairs(ContextMetadataRegistry.Metadata(T)));
         }
 
         [Test]
-        public void EmptyAnswer_FallsThroughToTheNextProvider()
+        public void EarlierProviderWins_ForTheSameKey()
         {
-            var silent = new FakeMetadataProvider { PathFunc = _ => string.Empty };
-            var answering = new FakeMetadataProvider { PathFunc = _ => "MAIN.Target" };
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { silent, answering });
+            Install(
+                FakeMetadataProvider.Emitting(("plcPath", "winner")),
+                FakeMetadataProvider.Emitting(("plcPath", "loser")));
 
-            Assert.AreEqual("MAIN.Target", ContextMetadataRegistry.Path(T));
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=winner" },
+                Pairs(ContextMetadataRegistry.Metadata(T)));
         }
 
         [Test]
-        public void NullLinkState_FallsThroughButFalseDoesNot()
+        public void LaterProvider_StillContributesUnclaimedKeys()
         {
-            var silent = new FakeMetadataProvider { LinkStateFunc = _ => null };
-            var answering = new FakeMetadataProvider { LinkStateFunc = _ => false };
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { silent, answering });
+            Install(
+                FakeMetadataProvider.Emitting(("plcPath", "MAIN.Target")),
+                FakeMetadataProvider.Emitting(("plcPath", "ignored"), ("robotFrame", "Base")));
 
-            // false is a real answer ("device, but not PLC linked") and must not be skipped as if
-            // the provider had declined to answer.
-            Assert.AreEqual(false, ContextMetadataRegistry.LinkState(T));
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=MAIN.Target", "robotFrame=Base" },
+                Pairs(ContextMetadataRegistry.Metadata(T)));
         }
 
         [Test]
-        public void Notes_AreConcatenatedAcrossProviders()
+        public void BlankKeysAndValues_AreDropped()
         {
-            var a = new FakeMetadataProvider { NotesFunc = _ => new[] { "note-a" } };
-            var b = new FakeMetadataProvider { NotesFunc = _ => new[] { "note-b", string.Empty } };
-            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[] { a, b });
+            // An absent fact must be an absent entry: a blank value would read downstream as a fact
+            // the framework stated, which it did not.
+            Install(FakeMetadataProvider.Emitting(
+                ("plcPath", "MAIN.Target"),
+                ("empty", ""),
+                ("whitespace", "   "),
+                ("", "orphaned")));
 
-            CollectionAssert.AreEqual(new[] { "note-a", "note-b" }, ContextMetadataRegistry.Notes(T).ToArray());
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=MAIN.Target" },
+                Pairs(ContextMetadataRegistry.Metadata(T)));
+        }
+
+        [Test]
+        public void NullReturn_IsTolerated()
+        {
+            Install(
+                new FakeMetadataProvider { MetadataFunc = _ => null },
+                FakeMetadataProvider.Emitting(("plcPath", "MAIN.Target")));
+
+            CollectionAssert.AreEqual(
+                new[] { "plcPath=MAIN.Target" },
+                Pairs(ContextMetadataRegistry.Metadata(T)));
         }
 
         [Test]
@@ -99,7 +131,7 @@ namespace PILAR.Context.Editor.Tests
             // Whether any provider is installed depends on the project's packages, so assert only
             // that automatic discovery works and never hands back null.
             Assert.IsNotNull(ContextMetadataRegistry.Providers);
-            Assert.DoesNotThrow(() => ContextMetadataRegistry.Path(T));
+            Assert.DoesNotThrow(() => ContextMetadataRegistry.Metadata(T));
         }
 
         [Test]

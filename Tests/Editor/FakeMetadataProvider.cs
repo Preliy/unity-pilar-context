@@ -27,10 +27,8 @@ namespace PILAR.Context.Editor.Tests
         /// <summary>Transforms this provider reports as devices, matched by name.</summary>
         public HashSet<string> DeviceNames { get; } = new();
 
-        public Func<Transform, string> PathFunc { get; set; } = _ => string.Empty;
-        public Func<Transform, bool?> LinkStateFunc { get; set; } = _ => null;
-        public Func<Transform, string> RoleFunc { get; set; } = _ => string.Empty;
-        public Func<Transform, IEnumerable<string>> NotesFunc { get; set; } = _ => Enumerable.Empty<string>();
+        public Func<Transform, IEnumerable<ContextEntry>> MetadataFunc { get; set; } =
+            _ => Enumerable.Empty<ContextEntry>();
 
         public bool IsRelevant(Transform subtreeRoot)
         {
@@ -40,12 +38,15 @@ namespace PILAR.Context.Editor.Tests
 
         public bool IsDevice(Transform t) => t != null && DeviceNames.Contains(t.name);
 
-        public string ResolvePath(Transform t) => PathFunc(t);
+        public IEnumerable<ContextEntry> ResolveMetadata(Transform t) => MetadataFunc(t);
 
-        public bool? ResolveLinkState(Transform t) => LinkStateFunc(t);
-
-        public string ResolveRole(Transform t) => RoleFunc(t);
-
-        public IEnumerable<string> InspectorNotes(Transform t) => NotesFunc(t);
+        /// <summary>Shorthand for the common case: a fixed set of pairs for every Transform.</summary>
+        internal static FakeMetadataProvider Emitting(params (string key, string value)[] entries)
+        {
+            return new FakeMetadataProvider
+            {
+                MetadataFunc = _ => entries.Select(e => new ContextEntry { key = e.key, value = e.value })
+            };
+        }
     }
 }

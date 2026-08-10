@@ -19,7 +19,7 @@ namespace PILAR.Context.Pipeline
     {
         // ---------------------------------------------------------------- read
 
-        [CliCommand("context_tree", "List the digital twin's context targets (machine/group/assembly/device) with their PLC paths and current ContextNode state.")]
+        [CliCommand("context_tree", "List the digital twin's context targets (machine/group/assembly/device) with their topology paths, framework metadata, and current ContextNode state.")]
         public static object ContextTree(
             [CliArg("scope", "Which targets to include: all | structural | devices | missing.")] string scope = "all",
             [CliArg("root", "Root GameObject name to walk from.")] string root = ContextTargets.DefaultRoot,
@@ -33,7 +33,7 @@ namespace PILAR.Context.Pipeline
             {
                 var list = matched
                     .Select(t => ContextTargets.Describe(t, rootTf))
-                    .OrderBy(i => i.unityPath, StringComparer.Ordinal)
+                    .OrderBy(i => i.scenePath, StringComparer.Ordinal)
                     .ToList();
                 return new ContextTreeFlatResult
                 {
@@ -49,9 +49,9 @@ namespace PILAR.Context.Pipeline
             };
         }
 
-        [CliCommand("context_get", "Read the full ContextNode entries of one target, addressed by unityPath, plcPath, or unique name.")]
+        [CliCommand("context_get", "Read the full ContextNode entries of one target, addressed by scenePath, topologyPath, a framework path from metadata, or unique name.")]
         public static object ContextGet(
-            [CliArg("target", "unityPath (Project/FG_01/P_Reader), plcPath (MAIN.FG_01.P_Reader), or a unique GameObject name.", Required = true)] string target,
+            [CliArg("target", "scenePath (Project/FG_01/P_Reader), topologyPath, a framework path from metadata, or a unique GameObject name.", Required = true)] string target,
             [CliArg("root", "Root GameObject name to resolve against.")] string root = ContextTargets.DefaultRoot)
         {
             var rootTf = ContextTargets.ResolveRoot(root);
@@ -62,12 +62,11 @@ namespace PILAR.Context.Pipeline
             return new ContextGetResult
             {
                 name = info.name,
-                unityPath = info.unityPath,
-                plcPath = info.plcPath,
+                scenePath = info.scenePath,
+                topologyPath = info.topologyPath,
                 tier = info.tier,
                 tierName = info.tierName,
-                plcLinked = info.plcLinked,
-                hierarchyRole = info.hierarchyRole,
+                metadata = info.metadata,
                 components = info.components,
                 hasNode = info.hasNode,
                 prefabAsset = info.prefabAsset,
@@ -96,8 +95,7 @@ namespace PILAR.Context.Pipeline
                     tierName = ContextTargets.TierName(g.Key),
                     total = g.Count(),
                     withNode = g.Count(i => i.hasNode),
-                    nonEmpty = g.Count(i => i.entryCount > 0),
-                    plcLinked = g.Count(i => i.plcLinked == true)
+                    nonEmpty = g.Count(i => i.entryCount > 0)
                 })
                 .ToList();
 
@@ -108,29 +106,11 @@ namespace PILAR.Context.Pipeline
                 total = infos.Count,
                 withNode = infos.Count(i => i.hasNode),
                 nonEmpty = infos.Count(i => i.entryCount > 0),
-                plcLinked = infos.Count(i => i.plcLinked == true),
                 byTier = byTier,
-                // The project tree is defined by the twin framework's own components, not by transform
-                // parenting. Groups open a PLC path level; samplers flatten into a name prefix instead.
-                projectTree = new ProjectTreeSummary
-                {
-                    groups = infos.Where(i => i.hierarchyRole == "group")
-                        .Select(i => i.plcPath).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
-                    nameSamplers = infos.Where(i => i.hierarchyRole == "sampler")
-                        .Select(i => i.plcPath).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
-                    // Structural nodes with no framework role: meaningful in Unity, invisible to the PLC.
-                    unityOnlyGrouping = infos
-                        .Where(i => string.IsNullOrEmpty(i.hierarchyRole) && i.plcLinked == null && i.tier > 0)
-                        .Select(i => i.unityPath).OrderBy(p => p, StringComparer.Ordinal).ToArray()
-                },
-                // Devices that exist but do not talk to the PLC — aggregated by a sampler, or
-                // simulation-only. Code generation must skip these.
-                devicesWithoutPlcLink = infos.Where(i => i.plcLinked == false)
-                    .Select(i => i.unityPath).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
                 missingNode = infos.Where(i => !i.hasNode)
-                    .Select(i => i.unityPath).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
+                    .Select(i => i.scenePath).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
                 emptyNode = infos.Where(i => i.hasNode && i.entryCount == 0)
-                    .Select(i => i.unityPath).OrderBy(p => p, StringComparer.Ordinal).ToArray()
+                    .Select(i => i.scenePath).OrderBy(p => p, StringComparer.Ordinal).ToArray()
             };
         }
 
@@ -138,7 +118,7 @@ namespace PILAR.Context.Pipeline
 
         [CliCommand("context_set", "Upsert context entries on a target. Pass key+value for a single entry, or entries for a JSON array. Existing keys not mentioned are preserved.")]
         public static object ContextSet(
-            [CliArg("target", "unityPath, plcPath, or a unique GameObject name.", Required = true)] string target,
+            [CliArg("target", "scenePath, topologyPath, a framework path from metadata, or a unique GameObject name.", Required = true)] string target,
             [CliArg("key", "Single entry key to upsert.")] string key = null,
             [CliArg("value", "Single entry value to upsert.")] string value = null,
             [CliArg("entries", "JSON array of {\"key\":...,\"value\":...} to upsert in one call.")] string entries = null,
@@ -167,8 +147,8 @@ namespace PILAR.Context.Pipeline
 
             return new ContextSetResult
             {
-                target = info.unityPath,
-                plcPath = info.plcPath,
+                target = info.scenePath,
+                topologyPath = info.topologyPath,
                 tierName = info.tierName,
                 wroteTo = "scene",
                 applied = pending.Select(e => e.key).ToArray(),
@@ -178,7 +158,7 @@ namespace PILAR.Context.Pipeline
 
         [CliCommand("context_remove", "Remove one context entry by key from a target.")]
         public static object ContextRemove(
-            [CliArg("target", "unityPath, plcPath, or a unique GameObject name.", Required = true)] string target,
+            [CliArg("target", "scenePath, topologyPath, a framework path from metadata, or a unique GameObject name.", Required = true)] string target,
             [CliArg("key", "Entry key to remove.", Required = true)] string key,
             [CliArg("prefab", "Write to the backing prefab asset instead of the scene instance.")] bool prefab = false,
             [CliArg("root", "Root GameObject name to resolve against.")] string root = ContextTargets.DefaultRoot)
@@ -198,7 +178,7 @@ namespace PILAR.Context.Pipeline
             if (node == null)
                 return new ContextRemoveSkippedResult
                 {
-                    target = info.unityPath, removed = false, reason = "No ContextNode on this target."
+                    target = info.scenePath, removed = false, reason = "No ContextNode on this target."
                 };
 
             bool removed;
@@ -212,7 +192,7 @@ namespace PILAR.Context.Pipeline
 
             return new ContextRemoveResult
             {
-                target = info.unityPath,
+                target = info.scenePath,
                 wroteTo = "scene",
                 key = key,
                 removed = removed,
@@ -247,7 +227,7 @@ namespace PILAR.Context.Pipeline
             {
                 foreach (var t in sceneTargets)
                 {
-                    addedScene.Add(ContextTargets.UnityPath(t, rootTf));
+                    addedScene.Add(ContextTargets.ScenePath(t, rootTf));
                     if (dryRun) continue;
                     using (new UndoScope($"Add ContextNode to {t.name}"))
                     {
@@ -409,7 +389,7 @@ namespace PILAR.Context.Pipeline
         {
             if (!ContextTargets.TryGetPrefabSlot(t, out var assetPath, out var rel))
                 throw new ArgumentException(
-                    $"'{info.unityPath}' is not part of a prefab instance — omit prefab to write to the scene.");
+                    $"'{info.scenePath}' is not part of a prefab instance — omit prefab to write to the scene.");
 
             var contents = PrefabUtility.LoadPrefabContents(assetPath);
             try
@@ -445,8 +425,8 @@ namespace PILAR.Context.Pipeline
 
                 return new ContextPrefabWriteResult
                 {
-                    target = info.unityPath,
-                    plcPath = info.plcPath,
+                    target = info.scenePath,
+                    topologyPath = info.topologyPath,
                     tierName = info.tierName,
                     wroteTo = "prefab",
                     prefabAsset = assetPath,

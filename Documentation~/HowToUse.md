@@ -13,18 +13,21 @@ covers everything else.
 
 ## Authoring in the Inspector
 
-The `ContextNode` inspector shows three things:
+The `ContextNode` inspector shows four things:
 
-1. **A derived-information panel** — the GameObject's other components, filtered so `Transform`,
-   `Collider`, `Renderer` and `MeshFilter` noise does not drown out the meaningful ones, plus anything
-   an installed integration contributes. Under Open Commissioning that is the resolved PLC path, the
-   link state and the hierarchy role. This information is *shown, not stored*, and the PLC row is
-   hidden entirely when no integration supplies one.
+1. **A derived-information panel** — the resolved topology path, the GameObject's other components
+   (filtered so `Transform`, `Collider`, `Renderer` and `MeshFilter` noise does not drown out the
+   meaningful ones), and one row per metadata entry an installed integration contributes, under that
+   integration's own key. This information is *shown, not stored*, and the metadata rows are absent
+   entirely when no integration supplies any.
 2. **The entry list** — Unity's own reorderable list, so drag-to-reorder, add and remove behave as you
    expect. Each row has a single-line key field over a word-wrapping, scrolling value field, since good
    context is usually a sentence or two rather than a word.
-3. **Warnings** — duplicate and empty keys surface as warnings rather than being blocked, which matches
-   the API's own tolerance and keeps you from losing half-typed work.
+3. **The Topology foldout** — the two optional overrides, `Segment` and `Parent`, collapsed by default
+   because the common case leaves both empty. See [Topology](#topologypath--the-tree-you-author).
+4. **Warnings** — duplicate keys, empty keys, and a topology segment containing `/` surface as warnings
+   rather than being blocked, which matches the API's own tolerance and keeps you from losing
+   half-typed work.
 
 The component filter is shared with the exporter, so the component list you see while writing context
 is exactly the one that gets exported.
@@ -79,35 +82,72 @@ Each node:
 | Field | Meaning |
 |---|---|
 | `name` | GameObject name |
-| `unityPath` | Slash path from the export root, e.g. `Project/FG_01/P_Reader` |
-| `plcPath` | Framework-side logical path. `""` when no integration supplies one |
-| `plcLinked` | `"true"` / `"false"` for devices, `""` for everything else |
-| `hierarchyRole` | `"group"`, `"sampler"`, or `""` |
+| `scenePath` | Slash path through the Unity scene from the export root, e.g. `Project/Geometry/FG_01/P_Reader` |
+| `topologyPath` | Slash path through the `ContextNode` tree, e.g. `Project/FG_01/P_Reader`. `""` for a node-less object |
+| `metadata` | Key/value facts an installed integration contributes, under its own keys. `[]` when none does |
 | `components` | Filtered component type names |
 | `context` | The authored key/value entries, in author order |
 | `children` | Nested nodes, in sibling order |
 
-`plcLinked` is a string rather than a boolean because `JsonUtility` cannot serialize `bool?`, and the
-three-way distinction is load-bearing.
+A node describes itself three ways: where it sits in the scene, where it sits in the structure you
+authored, and what a framework knows about it. Only the last is framework-specific, and it stays as
+opaque key/value pairs so the schema itself never names a framework's concepts.
 
-### `plcLinked` — why `"false"` and `""` are different
+```json
+{
+  "name": "P_Reader",
+  "scenePath": "Project/Geometry/FG_01/P_Reader",
+  "topologyPath": "Project/FG_01/P_Reader",
+  "metadata": [
+    { "key": "plcPath", "value": "MAIN.FG_01.P_Reader" },
+    { "key": "hierarchyRole", "value": "group" }
+  ],
+  "components": ["Sensor"],
+  "context": [{ "key": "Function", "value": "Reads the DMC on the carrier." }],
+  "children": []
+}
+```
 
-`""` means *not a device*. `"false"` means *a device that exchanges no data with the PLC*: it is either
-aggregated into a parent sampler's single symbol, or exists only for simulation.
-**Code generation must skip `"false"` nodes.** In the reference project `Demo_1`, 80 of 93 devices are
-PLC linked — a figure that matches Open Commissioning's own `Demo_1_Project_Tree.xml` exactly.
+### `topologyPath` — the tree you author
 
-### `hierarchyRole` — the project tree is not the transform tree
+The topology is the logical machine structure, and it is exactly the `ContextNode` tree: a node hangs
+under the nearest ancestor that also carries a node, and objects without a node are not in it at all.
+A CAD wrapper you never annotated therefore appears in `scenePath` and vanishes from `topologyPath`.
 
-Under Open Commissioning the PLC-visible tree is defined by `Hierarchy` components, **not** by
-transform parenting:
+Two optional overrides on `ContextNode` shape it, both in the inspector's **Topology** foldout:
 
-- `"group"` — opens a level in the PLC path, joined with `.`
-- `"sampler"` — opens no level; prefixes its children's names instead, joined with `_`, so a group like
-  `FG_Transport` stays flat
-- `""` — no `Hierarchy` at all: Unity-side grouping the PLC never sees
+- **Segment** — the name this node contributes. Empty means the GameObject's name.
+- **Parent** — the node it hangs under. Empty means the nearest ancestor carrying a node. Setting it
+  lets the topology diverge from transform parenting entirely, which is the point: transform parenting
+  is arranged for the scene, and the machine's structure often is not the same shape.
 
-In `Demo_1`: 7 groups, 13 name samplers, 18 Unity-only wrappers.
+A segment containing `/` is flagged in the inspector — it would make the path unsplittable downstream.
+A `Parent` chain that loops back on itself is truncated with a console warning rather than hanging.
+
+### `metadata` — an open vocabulary
+
+Keys are chosen by whichever integration is installed; nothing in the package interprets them. An
+absent key means the framework did not state that fact, which is not the same as stating it false.
+
+Under Open Commissioning:
+
+| Key | Value | Meaning |
+|---|---|---|
+| `plcPath` | `MAIN.FG_01.P_Reader` | Position in the PLC symbol tree |
+| `hierarchyRole` | `group` | A `Hierarchy` that opens a level in that path, joined with `.` |
+| `hierarchyRole` | `sampler` | A `Hierarchy` with `IsNameSampler`: opens no level, prefixes its children's names with `_` instead, so a group like `FG_Transport` stays flat |
+| `deviceType` | `SensorBinary` | The `IDevice` component's type. Present on devices only |
+| `aggregatedBy` | a panel's name | A `PanelSampler` folded this device into its own single symbol |
+| `simulationDevice` | `true` | The device exchanges no data with the controller and no sampler accounts for that |
+
+**A node is a real PLC symbol when it has a `deviceType` and neither of the last two keys.** Every
+Transform resolves a `plcPath`, including pure structure, so `deviceType` is what separates a device
+from a wrapper in the JSON export, which carries no tier field.
+
+`aggregatedBy` and `simulationDevice` are **inferred**, not read: OC has no simulation flag, and
+`Link.Enable == false` carries both meanings at once. Separating them is what makes either claim
+truthful — a `PanelSampler` force-disables its members' links at `Start`, so without the split every
+panel member would read as simulation-only. Code generation must skip both.
 
 ## CLI commands
 
@@ -116,17 +156,23 @@ from a terminal against a live Editor, via the Unity CLI and `com.unity.pipeline
 
 | Command | Purpose |
 |---|---|
-| `context_tree` | List targets (nested or flat) with tier, PLC path, components, node state |
+| `context_tree` | List targets (nested or flat) with tier, both paths, metadata, components, node state |
 | `context_get` | Read one target's full entries |
 | `context_set` | Upsert entries — a single `key`/`value`, or an `entries` JSON array |
 | `context_remove` | Remove one entry by key |
 | `context_ensure` | Add empty `ContextNode`s in bulk (dry-run by default) |
 | `context_audit` | Coverage per tier, plus lists of missing and empty nodes |
 
-**Addressing.** Targets are named by `unityPath` (`Project/FG_01/Barcode Reader/P_Reader`), by
-framework `plcPath` (`MAIN.FG_01.P_Reader`, case-insensitive), or by a bare GameObject name when that
-name is unique under the root. An ambiguous bare name is an error that tells you the full path to use
-instead.
+**Addressing.** Targets are named, in this order, by `scenePath`
+(`Project/FG_01/Barcode Reader/P_Reader`), by `topologyPath`, by any metadata value that is unique
+under the root (case-insensitive — this is what keeps an OC `plcPath` like `MAIN.FG_01.P_Reader`
+working as a handle), or by a bare GameObject name when that name is unique. An ambiguous value or
+name is an error that tells you the full path to use instead.
+
+**What `context_audit` does not report.** Coverage only: totals, per-tier counts, and the lists of
+missing and empty nodes. It deliberately does not aggregate over framework vocabulary — that would
+mean the neutral pipeline hard-coding one framework's key names. Read `context_tree`'s `metadata` and
+group it yourself.
 
 **Prefabs.** `context_set` and `context_remove` accept `--prefab true` to write to the backing prefab
 asset rather than the scene instance. The backing slot is resolved through
@@ -169,20 +215,27 @@ namespace PILAR.Context.Editor
         int Order { get; }
         bool IsRelevant(Transform subtreeRoot);   // should this subtree survive pruning?
         bool IsDevice(Transform t);               // is this the leaf tier?
-        string ResolvePath(Transform t);          // -> plcPath
-        bool? ResolveLinkState(Transform t);      // -> plcLinked; null means "not a device"
-        string ResolveRole(Transform t);          // -> hierarchyRole
-        IEnumerable<string> InspectorNotes(Transform t);
+        IEnumerable<ContextEntry> ResolveMetadata(Transform t);   // -> metadata, under your own keys
     }
 }
 ```
 
+Only three questions, and only the first two are structural. Everything else your framework knows
+leaves through `ResolveMetadata` as key/value pairs you name yourself — the package neither defines
+nor interprets the vocabulary, which is why adding a framework never means editing the schema.
+
 Implement it in an Editor assembly, give the class a public parameterless constructor, and it is picked
 up automatically through `TypeCache` — there is no registration call. `ContextMetadataRegistry` merges
-the installed providers, taking the first non-empty answer in `Order`, so several can coexist.
+the installed providers in `Order`; the first provider to answer for a key owns it, and a later one can
+only add keys nobody claimed, so several can coexist.
 
-Every method receives arbitrary Transforms from anywhere in the scene. Return the neutral value (`""`,
-`null`, `false`) rather than throwing when a Transform means nothing to your framework.
+Every method receives arbitrary Transforms from anywhere in the scene. Return an empty sequence
+(or `false`) rather than throwing when a Transform means nothing to your framework, and omit a key
+rather than emitting a blank value for it — the registry drops blanks, because an absent fact and a
+blank one are different statements.
+
+Note what you do **not** implement: `topologyPath` is computed by the package from the `ContextNode`
+tree, so it works with no provider installed at all.
 
 `PILAR.Context.OpenCommissioning` is the reference implementation and worth reading: one small file,
 in an assembly guarded by a `com.open-commissioning.core` version define so it vanishes cleanly when OC
@@ -194,8 +247,14 @@ is absent.
 Unity package; add `"com.unity.pipeline": "0.4.0-exp.1"` to your manifest. The rest of the package works
 without it.
 
-**`plcPath`, `plcLinked` and `hierarchyRole` all export as `""`.** No metadata provider is installed.
-Add `com.open-commissioning.core`, or implement `IContextMetadataProvider` for your own framework.
+**`metadata` is empty on every node.** No metadata provider is installed. Add
+`com.open-commissioning.core`, or implement `IContextMetadataProvider` for your own framework. The
+`topologyPath` is unaffected — it does not come from a provider.
+
+**`topologyPath` is empty, or shorter than expected.** The topology is exactly the `ContextNode` tree,
+so an object without a node has no topology path and an un-annotated level between two nodes collapses
+away. Run `context_ensure` to add nodes in bulk, or set the **Parent** override where the structure
+should not follow transform parenting.
 
 **`CS0246: The type or namespace name 'OC' could not be found`.** The OC integration is compiling
 without OC present, which should be impossible — the assembly is guarded. Check that
