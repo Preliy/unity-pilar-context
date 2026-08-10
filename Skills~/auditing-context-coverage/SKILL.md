@@ -59,9 +59,23 @@ unity command menu --path "PILAR/Context/Export Machine Context (JSON)"
 ```
 
 Writes `Assets/StreamingAssets/<SceneName>_Context.json` — a nested tree of
-`{name, scenePath, topologyPath, metadata[], components, context[], children[]}`, pruned to
-semantically relevant structure. `metadata` is a list of `{key, value}` pairs from whichever twin
-framework integration is installed, under that framework's own keys; it is `[]` when none is.
+`{name, scenePath, topologyPath, components, entries[], children[]}`, pruned to semantically relevant
+structure.
+
+`entries` is each node's whole dictionary. A bare key is authored; a prefixed one (`oc.plcPath`) was
+written by `context_sync` from an installed twin framework.
+
+**Sync before you export.** The export dumps what the nodes hold and queries no framework itself, so
+an unsynced scene exports no metadata at all and looks complete while doing it:
+
+```bash
+unity command context_sync --dry_run true     # what would change
+unity command context_sync --dry_run false    # write it
+unity command menu --path "PILAR/Context/Export Machine Context (JSON)"
+```
+
+The dry run is also the only drift check there is: a rename or a deleted component leaves stored
+values wrong until someone syncs again.
 
 ## Verify the export, do not assume it
 
@@ -94,7 +108,8 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 bad = []
 def walk(x):
-    for e in x.get('context', []):
+    for e in x.get('entries', []):
+        if '.' in e.get('key',''): continue          # synced, not authored
         if not e.get('key','').strip() or not e.get('value','').strip():
             bad.append((x['scenePath'], e.get('key')))
     for c in x.get('children', []): walk(c)
@@ -112,13 +127,13 @@ a controller symbol must appear there, and nothing should appear that the export
 means the twin and the controller project have drifted, and the export must not be trusted for code
 generation until they agree.
 
-Under Open Commissioning a node is a controller symbol when its `metadata` has a `deviceType` and
-neither `aggregatedBy` nor `simulationDevice`. Do not filter on `plcPath` alone — every node has one,
-including pure structure.
+Under Open Commissioning a node is a controller symbol when its entries carry `oc.deviceType` and
+neither `oc.aggregatedBy` nor `oc.simulationDevice`. Do not filter on `oc.plcPath` alone — every node
+has one, including pure structure.
 
 `context_audit` deliberately reports **coverage only** — totals, per-tier counts, missing and empty
 nodes. It does not group by framework vocabulary, because the pipeline does not own that vocabulary.
-Build the controller-side view yourself from each target's `metadata`:
+Build the controller-side view yourself from the prefixed entries:
 
 ```bash
 python -c "
@@ -126,15 +141,17 @@ import json, sys, collections
 d = json.load(open(sys.argv[1]))
 facets = collections.defaultdict(collections.Counter)
 def walk(x):
-    for e in x.get('metadata', []): facets[e['key']][e['value']] += 1
+    for e in x.get('entries', []):
+        if '.' in e['key']: facets[e['key']][e['value']] += 1
     for c in x.get('children', []): walk(c)
 walk(d['root'])
 for k, v in facets.items(): print(k, dict(v))
 " Assets/StreamingAssets/<SceneName>_Context.json
 ```
 
-Under Open Commissioning that prints the `hierarchyRole` split (`group` / `sampler`) and the count of
-devices carrying `aggregatedBy` or `simulationDevice` — the ones that produce no controller symbol.
+Under Open Commissioning that prints the `oc.hierarchyRole` split (`group` / `sampler`) and the count
+of devices carrying `oc.aggregatedBy` or `oc.simulationDevice` — the ones that produce no controller
+symbol. An empty result means the scene was never synced, not that the framework knows nothing.
 
 ## Common mistakes
 

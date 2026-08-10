@@ -57,10 +57,14 @@ namespace PILAR.Context.Pipeline.Tests
             return t;
         }
 
-        /// <summary>Makes the fake provider publish these entries for one transform, by name.</summary>
+        /// <summary>
+        /// Makes the fake provider publish these entries for one transform, by name — or for every
+        /// transform when the name is null. Keys are bare; the registry applies the namespace, which
+        /// is "fake" unless a test changes it.
+        /// </summary>
         protected void SetMetadata(string transformName, params (string key, string value)[] entries)
         {
-            Provider.MetadataFunc = t => t.name != transformName
+            Provider.MetadataFunc = t => transformName != null && t.name != transformName
                 ? System.Array.Empty<ContextEntry>()
                 : entries.Select(e => new ContextEntry { key = e.key, value = e.value }).ToArray();
         }

@@ -87,10 +87,12 @@ because Unity cannot serialize the latter, so uniqueness is enforced by the API 
 1. Select a GameObject that means something — a station, an assembly, a sensor.
 2. **Add Component ▸ PILAR ▸ Context ▸ Context Node**.
 3. Add entries, e.g. `Function` → *"Reads the RFID tag on the incoming part to confirm identity."*
-4. Run **PILAR ▸ Context ▸ Export Machine Context (JSON)**. With nothing selected the exporter looks for
+4. With a twin framework installed, run **PILAR ▸ Context ▸ Sync Framework Metadata** to pull what it
+   knows into the same list, under its own key prefix. Skip this if you have no integration.
+5. Run **PILAR ▸ Context ▸ Export Machine Context (JSON)**. With nothing selected the exporter looks for
    a root named `Project`, then falls back to the scene's only root; select a GameObject to export a
    specific subtree.
-5. Read the result at `Assets/StreamingAssets/{SceneName}_Context.json`.
+6. Read the result at `Assets/StreamingAssets/{SceneName}_Context.json`.
 
 One exported node:
 
@@ -99,21 +101,23 @@ One exported node:
   "name": "P_Reader",
   "scenePath": "Project/Geometry/FG_01/P_Reader",
   "topologyPath": "Project/FG_01/P_Reader",
-  "metadata": [
-    { "key": "plcPath", "value": "MAIN.FG_01.P_Reader" }
-  ],
   "components": ["SensorBinary", "TagReader"],
-  "context": [
-    { "key": "Function", "value": "Reads the RFID tag on the incoming part to confirm identity." }
+  "entries": [
+    { "key": "Function",   "value": "Reads the RFID tag on the incoming part to confirm identity." },
+    { "key": "oc.plcPath", "value": "MAIN.FG_01.P_Reader" }
   ],
   "children": []
 }
 ```
 
 `scenePath` is where the object lives in Unity; `topologyPath` is where it lives in the structure you
-authored, which skips every level you did not annotate. `metadata` carries whatever an installed twin
-framework knows, under that framework's own keys — nothing in the package interprets them, which is
-what keeps the schema free of any one framework's vocabulary.
+authored, which skips every level you did not annotate.
+
+`entries` is the node's whole dictionary. A bare key is a human's; a prefixed one belongs to an
+installed twin framework and was written there by **PILAR ▸ Context ▸ Sync Framework Metadata**.
+Nothing in the package interprets those keys, which is what keeps the schema free of any one
+framework's vocabulary — and because the node stores them, the export is a straight dump that reads
+the same on a machine where that framework is not installed.
 
 ## Agent skills
 

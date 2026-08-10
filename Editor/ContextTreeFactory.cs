@@ -18,16 +18,14 @@ namespace PILAR.Context.Editor
         /// for a node-less object. See <see cref="ContextTopologyPath"/>.
         /// </summary>
         public string topologyPath;
-        /// <summary>
-        /// Facts an installed <see cref="IContextMetadataProvider"/> knows about this object, under
-        /// keys the framework chooses — a framework-side path, a structural role, whether the object
-        /// is simulated. Empty when no provider is installed or none has anything to say. An absent
-        /// key means the framework did not state that fact, not that the fact is false.
-        /// </summary>
-        public List<ContextEntry> metadata;
         public List<string> components;
-        /// <summary>The authored key/value context — the point of the whole export.</summary>
-        public List<ContextEntry> context;
+        /// <summary>
+        /// The node's whole dictionary, in the order it is stored: what a human wrote, and whatever
+        /// an installed framework contributed under its own namespace ("oc.plcPath"). One list,
+        /// because that is how the node itself holds it — this export writes down what the node
+        /// knows rather than assembling a view of it.
+        /// </summary>
+        public List<ContextEntry> entries;
         public List<ContextExportNode> children;
     }
 
@@ -49,10 +47,11 @@ namespace PILAR.Context.Editor
     /// subtree. With no provider installed the export is simply narrower — every node a human
     /// annotated, and nothing else.
     ///
-    /// Each node is described three ways: where it sits in the scene, where it sits in the topology
-    /// the author defined, and whatever a framework knows about it. Only the last of those is
-    /// framework-specific, and it stays as opaque key/value metadata so the schema itself never
-    /// names a framework's concepts.
+    /// A node is described by two computed paths — where it sits in the scene, where it sits in the
+    /// topology the author defined — and by its own entry dictionary, copied out verbatim. Nothing
+    /// here consults a provider for content: framework facts reach the node through
+    /// <see cref="ContextMetadataSync"/> beforehand, so the export writes down what the scene stores
+    /// rather than assembling a fresh view of it, and the schema never names a framework's concepts.
     /// </summary>
     public static class ContextTreeFactory
     {
@@ -92,9 +91,8 @@ namespace PILAR.Context.Editor
                 name = origin.name,
                 scenePath = scenePath,
                 topologyPath = ContextTopologyPath.Resolve(origin),
-                metadata = ContextMetadataRegistry.Metadata(origin).ToList(),
                 components = ContextComponentFilter.GetRelevantComponentNames(origin.gameObject).ToList(),
-                context = contextNode != null ? contextNode.Entries.ToList() : new List<ContextEntry>(),
+                entries = contextNode != null ? contextNode.Entries.ToList() : new List<ContextEntry>(),
                 children = children
             };
         }

@@ -13,14 +13,15 @@ namespace PILAR.Context.Editor
     /// add and remove come from Unity's own list control rather than hand-managed binding. Each row is
     /// drawn by <see cref="ContextEntryDrawer"/>, which supplies the multi-line scrollable value field.
     ///
-    /// Above the list sits derived information the author needs but the node does not store: the
-    /// resolved topology path, the GameObject's other components, and whatever metadata an installed
-    /// <see cref="IContextMetadataProvider"/> contributes. Below it, duplicate and empty keys surface
-    /// as warnings rather than being blocked, matching the ContextNode API's own tolerance.
+    /// Above the list sits the little the node does not store — its resolved topology path and the
+    /// GameObject's other components. Framework metadata is not repeated there: it is in the list,
+    /// drawn as compact disabled rows, and showing it twice would only give the two views a chance
+    /// to disagree.
     ///
-    /// The two topology overrides sit in a collapsed foldout: they are empty in the ordinary case,
-    /// where the topology follows transform parenting and the GameObject's name, and pushing them
-    /// down keeps the authored entries as the thing the inspector is about.
+    /// Below the list, a Sync button and the two topology overrides in a collapsed foldout — both
+    /// untouched in the ordinary case, and pushing them down keeps the authored entries as the thing
+    /// the inspector is about. Duplicate and empty keys surface as warnings rather than being
+    /// blocked, matching the ContextNode API's own tolerance.
     /// </summary>
     [CustomEditor(typeof(ContextNode))]
     public class ContextNodeEditor : UnityEditor.Editor
@@ -43,6 +44,7 @@ namespace PILAR.Context.Editor
             entries.style.marginTop = 4;
             root.Add(entries);
 
+            root.Add(BuildSyncButton());
             root.Add(BuildTopologyOverrides());
 
             _warnings = new VisualElement();
@@ -52,6 +54,38 @@ namespace PILAR.Context.Editor
             root.TrackSerializedObjectValue(serializedObject, _ => Refresh());
 
             return root;
+        }
+
+        /// <summary>
+        /// Pulls this node's framework metadata into the list above. Hidden entirely when nothing is
+        /// installed to sync from, rather than sitting there doing nothing.
+        /// </summary>
+        private VisualElement BuildSyncButton()
+        {
+            var container = new VisualElement();
+            if (ContextMetadataRegistry.Providers.Count == 0) return container;
+
+            var button = new Button(SyncSelected) { text = "Sync Framework Metadata" };
+            button.style.marginTop = 2;
+            button.tooltip =
+                "Rewrites the entries owned by an installed twin framework. Authored entries are " +
+                "never touched.";
+            container.Add(button);
+
+            return container;
+        }
+
+        private void SyncSelected()
+        {
+            foreach (var node in targets.OfType<ContextNode>())
+            {
+                Undo.RecordObject(node, "Sync context metadata");
+                if (!ContextMetadataSync.Apply(node)) continue;
+                EditorUtility.SetDirty(node);
+            }
+
+            serializedObject.Update();
+            Refresh();
         }
 
         private VisualElement BuildTopologyOverrides()
@@ -85,17 +119,14 @@ namespace PILAR.Context.Editor
             var node = (ContextNode)target;
             var components = ContextComponentFilter.GetRelevantComponentNames(node.gameObject).ToArray();
 
+            // Only what the node genuinely does not store. Framework metadata used to be listed here;
+            // it now lives in the entry list itself, and repeating it would just be two views of the
+            // same data disagreeing whenever one is stale.
             var lines = new List<string>
             {
                 $"Topology: {ContextTopologyPath.Resolve(node.transform)}",
                 $"Components: {(components.Length > 0 ? string.Join(", ", components) : "-")}"
             };
-
-            // Rendered verbatim under the provider's own keys, so a project without a twin framework
-            // installed gets a clean panel instead of a row of dashes, and a framework can surface a
-            // new fact here without this file learning about it.
-            lines.AddRange(ContextMetadataRegistry.Metadata(node.transform)
-                .Select(entry => $"{entry.key}: {entry.value}"));
 
             _derivedInfo.text = string.Join("\n", lines);
         }

@@ -232,24 +232,36 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
-        public void Resolve_ByFrameworkPathFromMetadataIgnoringCase()
+        public void Resolve_ByFrameworkPathStoredOnTheNodeIgnoringCase()
         {
             BuildStandardFixture();
-            SetMetadata("Sensor", ("plcPath", "MAIN.FG_01.Sensor"));
+            var sensor = Root.transform.Find("FG_01/Station/Sensor");
+            NodeWith(sensor, ("oc.plcPath", "MAIN.FG_01.Sensor"));
 
-            // Any metadata value is a handle, whatever key it arrived under — that is what keeps a
-            // framework's own addressing working without ContextTargets knowing the framework.
+            // Any namespaced value stored on a node is a handle, whatever key it arrived under - and
+            // because it is read from the node rather than a provider, it still resolves in a project
+            // where that framework is not installed.
             Assert.AreEqual("Sensor", ContextTargets.Resolve("MAIN.FG_01.Sensor", Root.transform).name);
             Assert.AreEqual("Sensor", ContextTargets.Resolve("main.fg_01.sensor", Root.transform).name);
+        }
+
+        [Test]
+        public void Resolve_IgnoresAuthoredValuesAsHandles()
+        {
+            BuildStandardFixture();
+            NodeWith(Root.transform.Find("FG_01"), ("Function", "Feeds the press."));
+
+            // Prose is not an address. Only a namespaced key's value is offered as a handle.
+            Assert.Throws<ArgumentException>(
+                () => ContextTargets.Resolve("Feeds the press.", Root.transform));
         }
 
         [Test]
         public void Resolve_AmbiguousMetadataValueThrowsAndSuggestsAFullPath()
         {
             BuildStandardFixture();
-            Provider.MetadataFunc = t => t.name == "FG_01" || t.name == "FG_02"
-                ? new[] { new ContextEntry { key = "plcPath", value = "MAIN.Shared" } }
-                : System.Array.Empty<ContextEntry>();
+            NodeWith(Root.transform.Find("FG_01"), ("oc.plcPath", "MAIN.Shared"));
+            NodeWith(Root.transform.Find("FG_02"), ("oc.plcPath", "MAIN.Shared"));
 
             var ex = Assert.Throws<ArgumentException>(
                 () => ContextTargets.Resolve("MAIN.Shared", Root.transform));
@@ -361,18 +373,33 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
-        public void Describe_CarriesProviderMetadata()
+        public void Describe_SplitsAuthoredEntriesFromSyncedOnes()
         {
             BuildStandardFixture();
+            var fg1 = Root.transform.Find("FG_01");
+            var node = NodeWith(fg1, ("Function", "Feeds the press."));
             SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"), ("hierarchyRole", "group"));
+            PILAR.Context.Editor.ContextMetadataSync.Apply(node);
 
-            var fg1 = ContextTargets.Describe(Root.transform.Find("FG_01"), Root.transform);
-            var fg2 = ContextTargets.Describe(Root.transform.Find("FG_02"), Root.transform);
+            var info = ContextTargets.Describe(fg1, Root.transform);
 
-            CollectionAssert.AreEqual(
-                new[] { "plcPath=MAIN.FG_01", "hierarchyRole=group" },
-                fg1.metadata.Select(e => $"{e.key}={e.value}").ToArray());
-            CollectionAssert.IsEmpty(fg2.metadata);
+            // Coverage is what a human wrote. Counting synced entries would report a fully synced,
+            // entirely undocumented scene as complete.
+            Assert.AreEqual(1, info.entryCount);
+            CollectionAssert.AreEqual(new[] { "Function" }, info.entryKeys);
+            Assert.AreEqual(2, info.derivedCount);
+        }
+
+        [Test]
+        public void Describe_ReportsNoDerivedEntriesBeforeASync()
+        {
+            BuildStandardFixture();
+            SetMetadata("FG_01", ("plcPath", "MAIN.FG_01"));
+
+            // Describe reads the node, it does not query providers - an unsynced target is bare.
+            var info = ContextTargets.Describe(Root.transform.Find("FG_01"), Root.transform);
+
+            Assert.AreEqual(0, info.derivedCount);
         }
 
         [Test]

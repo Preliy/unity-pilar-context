@@ -6,6 +6,7 @@ covers everything else.
 - [Authoring in the Inspector](#authoring-in-the-inspector)
 - [Export](#export)
 - [The JSON schema](#the-json-schema)
+- [Syncing framework metadata](#syncing-framework-metadata)
 - [CLI commands](#cli-commands)
 - [Agent integration](#agent-integration)
 - [Supporting another twin framework](#supporting-another-twin-framework)
@@ -13,19 +14,21 @@ covers everything else.
 
 ## Authoring in the Inspector
 
-The `ContextNode` inspector shows four things:
+The `ContextNode` inspector shows five things:
 
-1. **A derived-information panel** — the resolved topology path, the GameObject's other components
+1. **A derived-information panel** — the resolved topology path and the GameObject's other components
    (filtered so `Transform`, `Collider`, `Renderer` and `MeshFilter` noise does not drown out the
-   meaningful ones), and one row per metadata entry an installed integration contributes, under that
-   integration's own key. This information is *shown, not stored*, and the metadata rows are absent
-   entirely when no integration supplies any.
+   meaningful ones). Only what the node genuinely does not store: framework metadata is not repeated
+   here, because it is in the entry list itself.
 2. **The entry list** — Unity's own reorderable list, so drag-to-reorder, add and remove behave as you
-   expect. Each row has a single-line key field over a word-wrapping, scrolling value field, since good
-   context is usually a sentence or two rather than a word.
-3. **The Topology foldout** — the two optional overrides, `Segment` and `Parent`, collapsed by default
+   expect. An authored row is a single-line key over a word-wrapping, scrolling value field, since
+   good context is usually a sentence or two rather than a word. A **synced row is one compact
+   disabled line**: its value is a short machine string, and editing it would only survive until the
+   next sync reverted it.
+3. **A Sync Framework Metadata button**, shown only when something is installed to sync from.
+4. **The Topology foldout** — the two optional overrides, `Segment` and `Parent`, collapsed by default
    because the common case leaves both empty. See [Topology](#topologypath--the-tree-you-author).
-4. **Warnings** — duplicate keys, empty keys, and a topology segment containing `/` surface as warnings
+5. **Warnings** — duplicate keys, empty keys, and a topology segment containing `/` surface as warnings
    rather than being blocked, which matches the API's own tolerance and keeps you from losing
    half-typed work.
 
@@ -84,29 +87,65 @@ Each node:
 | `name` | GameObject name |
 | `scenePath` | Slash path through the Unity scene from the export root, e.g. `Project/Geometry/FG_01/P_Reader` |
 | `topologyPath` | Slash path through the `ContextNode` tree, e.g. `Project/FG_01/P_Reader`. `""` for a node-less object |
-| `metadata` | Key/value facts an installed integration contributes, under its own keys. `[]` when none does |
 | `components` | Filtered component type names |
-| `context` | The authored key/value entries, in author order |
+| `entries` | The node's whole dictionary, in stored order: authored context and synced framework metadata alike |
 | `children` | Nested nodes, in sibling order |
 
-A node describes itself three ways: where it sits in the scene, where it sits in the structure you
-authored, and what a framework knows about it. Only the last is framework-specific, and it stays as
-opaque key/value pairs so the schema itself never names a framework's concepts.
+A node is two computed paths and **one dictionary**. The export writes down what the `ContextNode`
+holds rather than assembling a view of it — nothing is queried at export time, which is why the
+result is identical on a machine with no twin framework installed.
 
 ```json
 {
   "name": "P_Reader",
   "scenePath": "Project/Geometry/FG_01/P_Reader",
   "topologyPath": "Project/FG_01/P_Reader",
-  "metadata": [
-    { "key": "plcPath", "value": "MAIN.FG_01.P_Reader" },
-    { "key": "hierarchyRole", "value": "group" }
-  ],
   "components": ["Sensor"],
-  "context": [{ "key": "Function", "value": "Reads the DMC on the carrier." }],
+  "entries": [
+    { "key": "Function",      "value": "Reads the DMC on the carrier." },
+    { "key": "oc.plcPath",    "value": "MAIN.FG_01.P_Reader" },
+    { "key": "oc.deviceType", "value": "SensorBinary" }
+  ],
   "children": []
 }
 ```
+
+### One list, two kinds of entry
+
+A key with no namespace is a human's. A key prefixed with an installed integration's namespace —
+`oc.` for Open Commissioning — was written by [a sync](#syncing-framework-metadata) and is owned by
+that integration.
+
+The prefix is the whole ownership mechanism: it is what lets a sync overwrite `oc.plcPath` without
+ever reading your `Function`, and what lets it delete an entry whose underlying fact is gone. Two
+consequences worth knowing:
+
+- **Never hand-write a prefixed key.** `context_set` and `context_remove` refuse them outright, and
+  the Inspector draws them as disabled rows, because the next sync would revert the edit anyway.
+- **`Motor.Speed` is yours.** A dot alone means nothing; only a prefix matching an *installed*
+  provider does. Your own dotted keys count as coverage and are never touched.
+
+### Syncing framework metadata
+
+Nothing writes to your scene unless you ask. Run **PILAR ▸ Context ▸ Sync Framework Metadata**, press
+*Sync Framework Metadata* on a node's Inspector, or use the CLI:
+
+```bash
+unity command context_sync --dry_run true    # the drift report - reads only
+unity command context_sync --dry_run false   # write it
+```
+
+For each node, sync reconciles rather than rewrites: a key whose value is unchanged is left alone, a
+changed one is updated **in place** so entry order and the scene diff stay stable, a new one is
+appended, and one the provider no longer answers for is removed.
+
+**The dry run is the only staleness detection in the package.** Persisted data drifts — rename an
+object, delete a `Hierarchy` component, and the stored value is wrong until you sync again. Nothing
+polls for that on your behalf, so run the dry run before you trust an export.
+
+**Entries from an integration you have since uninstalled are left alone.** They are orphans: not
+recognised, not rewritten, not deleted. Opening the project without Open Commissioning must not strip
+the OC data out of every scene — but it also means nothing can clean those entries up automatically.
 
 ### `topologyPath` — the tree you author
 
@@ -124,27 +163,27 @@ Two optional overrides on `ContextNode` shape it, both in the inspector's **Topo
 A segment containing `/` is flagged in the inspector — it would make the path unsplittable downstream.
 A `Parent` chain that loops back on itself is truncated with a console warning rather than hanging.
 
-### `metadata` — an open vocabulary
+### Framework keys — an open vocabulary
 
 Keys are chosen by whichever integration is installed; nothing in the package interprets them. An
 absent key means the framework did not state that fact, which is not the same as stating it false.
 
-Under Open Commissioning:
+Open Commissioning claims the `oc` namespace and writes:
 
 | Key | Value | Meaning |
 |---|---|---|
-| `plcPath` | `MAIN.FG_01.P_Reader` | Position in the PLC symbol tree |
-| `hierarchyRole` | `group` | A `Hierarchy` that opens a level in that path, joined with `.` |
-| `hierarchyRole` | `sampler` | A `Hierarchy` with `IsNameSampler`: opens no level, prefixes its children's names with `_` instead, so a group like `FG_Transport` stays flat |
-| `deviceType` | `SensorBinary` | The `IDevice` component's type. Present on devices only |
-| `aggregatedBy` | a panel's name | A `PanelSampler` folded this device into its own single symbol |
-| `simulationDevice` | `true` | The device exchanges no data with the controller and no sampler accounts for that |
+| `oc.plcPath` | `MAIN.FG_01.P_Reader` | Position in the PLC symbol tree |
+| `oc.hierarchyRole` | `group` | A `Hierarchy` that opens a level in that path, joined with `.` |
+| `oc.hierarchyRole` | `sampler` | A `Hierarchy` with `IsNameSampler`: opens no level, prefixes its children's names with `_` instead, so a group like `FG_Transport` stays flat |
+| `oc.deviceType` | `SensorBinary` | The `IDevice` component's type. Present on devices only |
+| `oc.aggregatedBy` | a panel's name | A `PanelSampler` folded this device into its own single symbol |
+| `oc.simulationDevice` | `true` | The device exchanges no data with the controller and no sampler accounts for that |
 
-**A node is a real PLC symbol when it has a `deviceType` and neither of the last two keys.** Every
-Transform resolves a `plcPath`, including pure structure, so `deviceType` is what separates a device
-from a wrapper in the JSON export, which carries no tier field.
+**A node is a real PLC symbol when it has an `oc.deviceType` and neither of the last two keys.** Every
+Transform resolves an `oc.plcPath`, including pure structure, so `oc.deviceType` is what separates a
+device from a wrapper in the JSON export, which carries no tier field.
 
-`aggregatedBy` and `simulationDevice` are **inferred**, not read: OC has no simulation flag, and
+`oc.aggregatedBy` and `oc.simulationDevice` are **inferred**, not read: OC has no simulation flag, and
 `Link.Enable == false` carries both meanings at once. Separating them is what makes either claim
 truthful — a `PanelSampler` force-disables its members' links at `Start`, so without the split every
 panel member would read as simulation-only. Code generation must skip both.
@@ -156,12 +195,17 @@ from a terminal against a live Editor, via the Unity CLI and `com.unity.pipeline
 
 | Command | Purpose |
 |---|---|
-| `context_tree` | List targets (nested or flat) with tier, both paths, metadata, components, node state |
-| `context_get` | Read one target's full entries |
+| `context_tree` | List targets (nested or flat) with tier, both paths, components, node state |
+| `context_get` | Read one target's whole entry dictionary |
 | `context_set` | Upsert entries — a single `key`/`value`, or an `entries` JSON array |
 | `context_remove` | Remove one entry by key |
 | `context_ensure` | Add empty `ContextNode`s in bulk (dry-run by default) |
+| `context_sync` | Write framework metadata into the nodes, or report drift (dry-run by default) |
 | `context_audit` | Coverage per tier, plus lists of missing and empty nodes |
+
+`context_tree` reports `entryCount` and `entryKeys` for the **authored** entries and `derivedCount`
+for the synced ones. Coverage means what a human wrote, so a fully synced but undocumented scene
+still reports zero — see the audit note below.
 
 **Addressing.** Targets are named, in this order, by `scenePath`
 (`Project/FG_01/Barcode Reader/P_Reader`), by `topologyPath`, by any metadata value that is unique
@@ -171,8 +215,12 @@ name is an error that tells you the full path to use instead.
 
 **What `context_audit` does not report.** Coverage only: totals, per-tier counts, and the lists of
 missing and empty nodes. It deliberately does not aggregate over framework vocabulary — that would
-mean the neutral pipeline hard-coding one framework's key names. Read `context_tree`'s `metadata` and
-group it yourself.
+mean the neutral pipeline hard-coding one framework's key names. Read the nodes' `entries` and group
+the prefixed keys yourself.
+
+Coverage counts **authored** entries only. This matters more than it sounds: a sync writes an
+`oc.` key into every node, so counting list length would report a scene where nobody has written a
+word as fully documented.
 
 **Prefabs.** `context_set` and `context_remove` accept `--prefab true` to write to the backing prefab
 asset rather than the scene instance. The backing slot is resolved through
@@ -213,21 +261,25 @@ namespace PILAR.Context.Editor
     public interface IContextMetadataProvider
     {
         int Order { get; }
+        string Namespace { get; }                 // "oc" -> your keys land as "oc.plcPath"
         bool IsRelevant(Transform subtreeRoot);   // should this subtree survive pruning?
         bool IsDevice(Transform t);               // is this the leaf tier?
-        IEnumerable<ContextEntry> ResolveMetadata(Transform t);   // -> metadata, under your own keys
+        IEnumerable<ContextEntry> ResolveMetadata(Transform t);   // bare keys; the registry prefixes
     }
 }
 ```
 
-Only three questions, and only the first two are structural. Everything else your framework knows
-leaves through `ResolveMetadata` as key/value pairs you name yourself — the package neither defines
-nor interprets the vocabulary, which is why adding a framework never means editing the schema.
+Only four questions, and only two of them are structural. Everything else your framework knows leaves
+through `ResolveMetadata` as key/value pairs you name yourself — the package neither defines nor
+interprets the vocabulary, which is why adding a framework never means editing the schema.
 
 Implement it in an Editor assembly, give the class a public parameterless constructor, and it is picked
-up automatically through `TypeCache` — there is no registration call. `ContextMetadataRegistry` merges
-the installed providers in `Order`; the first provider to answer for a key owns it, and a later one can
-only add keys nobody claimed, so several can coexist.
+up automatically through `TypeCache` — there is no registration call.
+
+**`Namespace` is a permanent commitment.** It is how a sync recognises the entries it owns inside a
+node's list, so changing it later strands every entry already written into every scene, with nothing
+able to clean them up. A provider whose namespace is blank, contains a `.`, or is already claimed by
+another installed provider is refused at discovery with an error rather than half-supported.
 
 Every method receives arbitrary Transforms from anywhere in the scene. Return an empty sequence
 (or `false`) rather than throwing when a Transform means nothing to your framework, and omit a key
@@ -235,7 +287,8 @@ rather than emitting a blank value for it — the registry drops blanks, because
 blank one are different statements.
 
 Note what you do **not** implement: `topologyPath` is computed by the package from the `ContextNode`
-tree, so it works with no provider installed at all.
+tree, so it works with no provider installed at all — and nothing calls your provider at export time,
+only when someone syncs.
 
 `PILAR.Context.OpenCommissioning` is the reference implementation and worth reading: one small file,
 in an assembly guarded by a `com.open-commissioning.core` version define so it vanishes cleanly when OC
@@ -247,9 +300,14 @@ is absent.
 Unity package; add `"com.unity.pipeline": "0.4.0-exp.1"` to your manifest. The rest of the package works
 without it.
 
-**`metadata` is empty on every node.** No metadata provider is installed. Add
-`com.open-commissioning.core`, or implement `IContextMetadataProvider` for your own framework. The
-`topologyPath` is unaffected — it does not come from a provider.
+**The export carries no framework metadata.** Either no provider is installed, or the scene was never
+synced — the export writes down what the nodes hold and no longer queries providers itself. The menu
+item says which: it warns when providers are installed but nothing under the export root carries a
+namespaced key. Run **PILAR ▸ Context ▸ Sync Framework Metadata** and export again. The
+`topologyPath` is unaffected either way — it does not come from a provider.
+
+**A synced value is wrong after a rename or a component change.** Persisted data drifts and nothing
+polls for it. `unity command context_sync --dry_run true` lists every node that has moved on.
 
 **`topologyPath` is empty, or shorter than expected.** The topology is exactly the `ContextNode` tree,
 so an object without a node has no topology path and an un-annotated level between two nodes collapses

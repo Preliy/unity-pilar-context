@@ -7,8 +7,9 @@ namespace PILAR.Context.Pipeline
     // Public fields rather than properties, matching ContextTargetInfo, which already round-trips
     // through the CLI serializer. Field names and their order are the CLI's wire contract - agents and
     // the shipped skills read these keys by name, so renaming or reordering one is a breaking change.
-    // The 1.2 rename (unityPath -> scenePath, plcPath -> topologyPath, plcLinked and hierarchyRole
-    // folded into metadata) was exactly that, which is why the skills ship in the same release.
+    // The 1.2 reshape was exactly that: unityPath -> scenePath, plcPath -> topologyPath, and every
+    // framework fact folded into each node's one entry list under a provider namespace. The skills
+    // ship in the same release, so the docs naming these keys travel with the code emitting them.
     //
     // Where a command has two genuinely different responses (flat vs nested, wrote vs skipped) each
     // gets its own type rather than one union with half the fields left null: the commands already
@@ -46,10 +47,10 @@ namespace PILAR.Context.Pipeline
         public string topologyPath;
         public int tier;
         public string tierName;
-        public ContextEntryDto[] metadata;
         public string[] components;
         public bool hasNode;
         public string prefabAsset;
+        /// <summary>The node's whole dictionary: authored entries and synced ones, in node order.</summary>
         public ContextEntryDto[] entries;
     }
 
@@ -132,5 +133,31 @@ namespace PILAR.Context.Pipeline
         public string[] addedScene;
         public string[] addedPrefab;
         public string[] skipped;
+    }
+
+    /// <summary>One node's share of a sync, listing the keys by what would happen to them.</summary>
+    public class ContextSyncTarget
+    {
+        public string scenePath;
+        public string[] added;
+        public string[] updated;
+        public string[] removed;
+    }
+
+    /// <summary>
+    /// context_sync. With dryRun this is the drift report - the only place stored metadata is checked
+    /// against what the providers say now, so it carries the per-node detail rather than counts alone.
+    /// </summary>
+    public class ContextSyncResult
+    {
+        public string root;
+        public string scope;
+        public bool dryRun;
+        public int scanned;
+        public int changed;
+        public int added;
+        public int updated;
+        public int removed;
+        public ContextSyncTarget[] targets;
     }
 }

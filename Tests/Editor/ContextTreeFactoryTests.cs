@@ -139,7 +139,7 @@ namespace PILAR.Context.Editor.Tests
         }
 
         [Test]
-        public void Build_CopiesAuthoredEntries()
+        public void Build_CopiesTheNodesEntries()
         {
             var device = Child(_root, "P_Reader");
             var contextNode = device.AddComponent<ContextNode>();
@@ -147,46 +147,45 @@ namespace PILAR.Context.Editor.Tests
 
             var node = ContextTreeFactory.Build(_root.transform);
 
-            Assert.AreEqual(1, node.children[0].context.Count);
-            Assert.AreEqual("Function", node.children[0].context[0].key);
-            Assert.AreEqual("Reads the RFID tag.", node.children[0].context[0].value);
+            Assert.AreEqual(1, node.children[0].entries.Count);
+            Assert.AreEqual("Function", node.children[0].entries[0].key);
+            Assert.AreEqual("Reads the RFID tag.", node.children[0].entries[0].value);
         }
 
         [Test]
-        public void Build_LeavesMetadataEmpty_WithNoProvider()
-        {
-            Child(_root, "P_Reader").AddComponent<ContextNode>();
-
-            var child = ContextTreeFactory.Build(_root.transform).children[0];
-
-            CollectionAssert.IsEmpty(child.metadata);
-        }
-
-        [Test]
-        public void Build_CarriesProviderMetadataVerbatim()
+        public void Build_DoesNotAskProvidersForContent()
         {
             Child(_root, "P_Reader").AddComponent<ContextNode>();
             ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[]
             {
-                new FakeMetadataProvider
-                {
-                    MetadataFunc = t => t.name != "P_Reader"
-                        ? System.Array.Empty<ContextEntry>()
-                        : new[]
-                        {
-                            new ContextEntry { key = "plcPath", value = "MAIN.FG_01.P_Reader" },
-                            new ContextEntry { key = "simulationDevice", value = "true" }
-                        }
-                }
+                FakeMetadataProvider.Emitting("oc", ("plcPath", "MAIN.FG_01.P_Reader"))
             });
 
             var child = ContextTreeFactory.Build(_root.transform).children[0];
 
-            // The factory neither interprets nor reorders a provider's keys — that is what keeps the
-            // schema free of any framework's vocabulary.
+            // Metadata reaches a node through ContextMetadataSync, not through the export. An
+            // unsynced scene exports nothing extra no matter what a provider would have said.
+            CollectionAssert.IsEmpty(child.entries);
+        }
+
+        [Test]
+        public void Build_DumpsSyncedAndAuthoredEntriesAlikeInNodeOrder()
+        {
+            var node = Child(_root, "P_Reader").AddComponent<ContextNode>();
+            node.Set("Function", "Reads the RFID tag.");
+            ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[]
+            {
+                FakeMetadataProvider.Emitting("oc", ("plcPath", "MAIN.FG_01.P_Reader"))
+            });
+            ContextMetadataSync.Apply(node);
+
+            var child = ContextTreeFactory.Build(_root.transform).children[0];
+
+            // One list, verbatim: the factory neither partitions nor reorders it, which is what keeps
+            // the schema free of any framework's vocabulary.
             CollectionAssert.AreEqual(
-                new[] { "plcPath=MAIN.FG_01.P_Reader", "simulationDevice=true" },
-                child.metadata.Select(e => $"{e.key}={e.value}").ToArray());
+                new[] { "Function=Reads the RFID tag.", "oc.plcPath=MAIN.FG_01.P_Reader" },
+                child.entries.Select(e => $"{e.key}={e.value}").ToArray());
         }
 
         [Test]
@@ -218,11 +217,13 @@ namespace PILAR.Context.Editor.Tests
         public void BuildJson_ProducesADeserializableNodeTree()
         {
             var device = Child(_root, "P_Reader");
-            device.AddComponent<ContextNode>().Add("Function", "Reads the RFID tag.");
+            var node = device.AddComponent<ContextNode>();
+            node.Add("Function", "Reads the RFID tag.");
             ContextMetadataRegistry.OverrideProviders(new IContextMetadataProvider[]
             {
-                FakeMetadataProvider.Emitting(("plcPath", "MAIN.P_Reader"))
+                FakeMetadataProvider.Emitting("oc", ("plcPath", "MAIN.P_Reader"))
             });
+            ContextMetadataSync.Apply(node);
 
             // Never assert the exact string: it embeds the active scene name and UtcNow.
             var parsed = JsonUtility.FromJson<ExportRootMirror>(ContextTreeFactory.BuildJson(_root.transform));
@@ -235,13 +236,12 @@ namespace PILAR.Context.Editor.Tests
             Assert.AreEqual("P_Reader", child.name);
             Assert.AreEqual("Root/P_Reader", child.scenePath);
             Assert.AreEqual("P_Reader", child.topologyPath);
-            Assert.AreEqual("Function", child.context[0].key);
-            Assert.AreEqual("Reads the RFID tag.", child.context[0].value);
 
-            // Metadata is a list of serializable entries, so it survives JsonUtility intact — which
-            // is why nothing has to be flattened into a string to be exported.
-            Assert.AreEqual("plcPath", child.metadata[0].key);
-            Assert.AreEqual("MAIN.P_Reader", child.metadata[0].value);
+            // One list of serializable entries, so the whole dictionary survives JsonUtility intact -
+            // which is why nothing has to be flattened into a string to be exported.
+            CollectionAssert.AreEqual(
+                new[] { "Function=Reads the RFID tag.", "oc.plcPath=MAIN.P_Reader" },
+                child.entries.Select(e => $"{e.key}={e.value}").ToArray());
         }
     }
 }

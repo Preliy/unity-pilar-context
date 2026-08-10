@@ -21,6 +21,9 @@ namespace PILAR.Context.Editor.Tests
 
         public int Order { get; set; }
 
+        /// <summary>Settable so a test can exercise the registry's namespace admission rules.</summary>
+        public string Namespace { get; set; } = "fake";
+
         /// <summary>Transforms this provider claims as relevant, matched by name.</summary>
         public HashSet<string> RelevantNames { get; } = new();
 
@@ -40,13 +43,22 @@ namespace PILAR.Context.Editor.Tests
 
         public IEnumerable<ContextEntry> ResolveMetadata(Transform t) => MetadataFunc(t);
 
-        /// <summary>Shorthand for the common case: a fixed set of pairs for every Transform.</summary>
+        /// <summary>Shorthand for the common case: a fixed set of bare-key pairs for every Transform.</summary>
         internal static FakeMetadataProvider Emitting(params (string key, string value)[] entries)
         {
             return new FakeMetadataProvider
             {
                 MetadataFunc = _ => entries.Select(e => new ContextEntry { key = e.key, value = e.value })
             };
+        }
+
+        /// <summary>Same, under a namespace of its own, for the multi-provider cases.</summary>
+        internal static FakeMetadataProvider Emitting(
+            string ns, params (string key, string value)[] entries)
+        {
+            var provider = Emitting(entries);
+            provider.Namespace = ns;
+            return provider;
         }
     }
 }

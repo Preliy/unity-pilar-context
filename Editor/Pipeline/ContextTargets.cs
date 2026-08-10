@@ -84,11 +84,9 @@ namespace PILAR.Context.Pipeline
                 "all" => all,
                 "structural" => all.Where(t => GetTier(t, root) != TierDevice),
                 "devices" => all.Where(t => GetTier(t, root) == TierDevice),
-                "missing" => all.Where(t =>
-                {
-                    var node = t.GetComponent<ContextNode>();
-                    return node == null || node.Entries.Count == 0;
-                }),
+                // A node holding only synced metadata is still undocumented, so "missing" counts
+                // authored entries rather than the list length.
+                "missing" => all.Where(t => !AuthoredEntries(t.GetComponent<ContextNode>()).Any()),
                 _ => throw new ArgumentException(
                     $"Unknown scope '{scope}'. Expected: all | structural | devices | missing.")
             };
@@ -127,12 +125,14 @@ namespace PILAR.Context.Pipeline
         }
 
         /// <summary>
-        /// Accepts a scenePath (Project/FG_01/P_Reader), a topologyPath, a framework path a provider
-        /// published as metadata (under Open Commissioning, MAIN.FG_01.P_Reader), or a bare
+        /// Accepts a scenePath (Project/FG_01/P_Reader), a topologyPath, a framework path stored on
+        /// the node as namespaced metadata (under Open Commissioning, MAIN.FG_01.P_Reader), or a bare
         /// GameObject name — the last two only when they identify exactly one object under the root.
         ///
         /// The metadata step is what keeps a framework's own addressing usable without this file
-        /// knowing which key carries it: any metadata value may be a handle, so long as it is unique.
+        /// knowing which key carries it: any namespaced value may be a handle, so long as it is
+        /// unique. It reads the node's stored entries rather than asking a provider, so it still
+        /// resolves in a project where that framework is not installed.
         /// </summary>
         public static Transform Resolve(string target, Transform root)
         {
@@ -170,8 +170,12 @@ namespace PILAR.Context.Pipeline
 
         private static bool HasMetadataValue(Transform t, string needle)
         {
-            return CtxEditor.ContextMetadataRegistry.Metadata(t)
-                .Any(entry => string.Equals(entry.value, needle, StringComparison.OrdinalIgnoreCase));
+            var node = t.GetComponent<ContextNode>();
+            if (node == null) return false;
+
+            return node.Entries.Any(entry =>
+                CtxEditor.ContextMetadataRegistry.IsNamespacedKey(entry.key) &&
+                string.Equals(entry.value, needle, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>Prefab asset path backing this object, or null when it is a plain scene object.</summary>
@@ -217,20 +221,21 @@ namespace PILAR.Context.Pipeline
         }
 
         /// <summary>
-        /// Whatever an installed provider knows about this target, under the framework's own keys.
-        /// Empty when no provider is installed or none recognises the target.
+        /// The entries a human wrote, which is what coverage means. A node's list also holds whatever
+        /// a sync wrote under a provider's namespace, and counting those as documentation would report
+        /// a fully synced, entirely undocumented scene as complete.
         /// </summary>
-        public static ContextEntryDto[] Metadata(Transform t)
+        public static IEnumerable<ContextEntry> AuthoredEntries(ContextNode node)
         {
-            return CtxEditor.ContextMetadataRegistry.Metadata(t)
-                .Select(entry => new ContextEntryDto { key = entry.key, value = entry.value })
-                .ToArray();
+            if (node == null) return Enumerable.Empty<ContextEntry>();
+            return node.Entries.Where(e => !CtxEditor.ContextMetadataRegistry.IsDerivedKey(e.key));
         }
 
         public static ContextTargetInfo Describe(Transform t, Transform root)
         {
             var node = t.GetComponent<ContextNode>();
             var tier = GetTier(t, root);
+            var authored = AuthoredEntries(node).ToArray();
 
             return new ContextTargetInfo
             {
@@ -239,11 +244,11 @@ namespace PILAR.Context.Pipeline
                 topologyPath = CtxEditor.ContextTopologyPath.Resolve(t),
                 tier = tier,
                 tierName = TierName(tier),
-                metadata = Metadata(t),
                 components = Components(t),
                 hasNode = node != null,
-                entryCount = node != null ? node.Entries.Count : 0,
-                entryKeys = node != null ? node.Entries.Select(e => e.key).ToArray() : Array.Empty<string>(),
+                entryCount = authored.Length,
+                entryKeys = authored.Select(e => e.key).ToArray(),
+                derivedCount = node != null ? node.Entries.Count - authored.Length : 0,
                 prefabAsset = PrefabAssetPath(t)
             };
         }
@@ -259,12 +264,14 @@ namespace PILAR.Context.Pipeline
         public string topologyPath;
         public int tier;
         public string tierName;
-        /// <summary>Framework facts under the framework's own keys; empty with no provider installed.</summary>
-        public ContextEntryDto[] metadata;
         public string[] components;
         public bool hasNode;
+        /// <summary>Authored entries only — derived ones are not documentation and never count here.</summary>
         public int entryCount;
+        /// <summary>Authored keys only, in node order.</summary>
         public string[] entryKeys;
+        /// <summary>How many entries a sync wrote under an installed provider's namespace.</summary>
+        public int derivedCount;
         public string prefabAsset;
         public List<ContextTargetInfo> children;
     }
