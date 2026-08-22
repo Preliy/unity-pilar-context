@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/Preliy/unity-pilar-context/compare/v1.4.0...v1.4.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* leave disabled objects out and write deep trees in full ([dcdefef](https://github.com/Preliy/unity-pilar-context/commit/dcdefef14cac7479fdb561890b7513f980469f84))
+
 # [1.4.0](https://github.com/Preliy/unity-pilar-context/compare/v1.3.0...v1.4.0) (2026-08-10)
 
 
