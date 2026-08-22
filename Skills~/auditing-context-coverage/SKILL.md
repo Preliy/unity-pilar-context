@@ -34,6 +34,11 @@ Two numbers matter, and they are easy to confuse:
 Establish the project's own baseline by running the audit before you start. There are no universal
 numbers to compare against.
 
+`total` counts **enabled** targets only. Disabling a branch removes it and everything under it from
+every count, so a total that drops between runs usually means someone switched something off, not that
+work was lost. A disabled object can still be addressed by name — `context_get` and `context_set` reach
+it — it just stays out of the audit and the export until it is enabled.
+
 ## Provisioning the gaps
 
 `context_ensure` adds empty `ContextNode` components. It is **dry-run by default** — always inspect
@@ -61,6 +66,10 @@ unity command menu --path "PILAR/Context/Export Machine Context (JSON)"
 Writes `Assets/StreamingAssets/<SceneName>_Context.json` — a nested tree of
 `{name, scenePath, topologyPath, components, entries[], children[]}`, pruned to semantically relevant
 structure.
+
+**Disabled objects are not exported**, nor is anything under them — and `context_audit` skips them on
+the same rule, so coverage is measured against what the export actually writes. If something you
+documented is missing from both, check whether it is switched off before suspecting the tools.
 
 `entries` is each node's whole dictionary. A bare key is authored; a prefixed one (`oc.plcPath`) was
 written by `context_sync` from an installed twin framework.
@@ -93,9 +102,13 @@ print('nodes', n[0], 'maxDepth', depth[0], 'scene', d['sceneName'])
 " Assets/StreamingAssets/<SceneName>_Context.json
 ```
 
-The exporter uses `JsonUtility`, which **silently drops data nested past roughly 7–10 levels**. Record
-the node count and max depth for your scene, and re-check them whenever the hierarchy grows. If either
-drops unexpectedly, the serializer is truncating and the export can no longer be trusted.
+Record the node count and max depth for your scene, and re-check them after a batch: a count that moves
+when you did not expect it to means the scene changed under you — most often something was disabled,
+which removes it and its whole subtree from the export.
+
+Read the file with a real JSON parser, as above. **`JsonUtility.FromJson` stops at ten levels of
+nesting** and returns a silently truncated tree, so it cannot read a machine export back — the exporter
+writes the document itself for the same reason, and no longer has that limit.
 
 ## Check for malformed entries too
 

@@ -38,6 +38,12 @@ Every query classifies targets into tiers. Learn this vocabulary; the commands u
 Anything else — CAD geometry, interaction colliders, kinematic joints — is **not** a context target
 and will not appear in any listing.
 
+**Disabled objects are not targets either**, nor is anything under them, and a station whose only
+devices are switched off stops being an `assembly`. The listings describe the machine as it currently
+stands, which is also what the JSON export writes. Addressing one directly still works: `context_get`
+and `context_set` find a disabled object by path or name. So if something you can see in the Hierarchy
+window is absent from a listing, check its enabled state before assuming the query is wrong.
+
 **Device-ness comes from an installed integration**, not from this package. With no
 `IContextMetadataProvider` present there are no devices at all, so `assembly` collapses too and you
 are left with `machine` and `group`. If a scene you expect to be full of devices reports none, that

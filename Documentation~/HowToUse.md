@@ -65,6 +65,15 @@ real machine is overwhelmingly CAD mesh geometry — around 7,300 GameObjects in
 Note the asymmetry: pruning applies to *children*. The root you export is always emitted, even if it
 is empty.
 
+**Disabled objects are skipped**, along with everything under them — the export states what the machine
+is right now. This is not cosmetic: a scene that keeps two variants of a station side by side, one of
+them switched off, gives both the same name in the same place, so exporting both produces two nodes
+that are indistinguishable by `scenePath` and a consumer keyed by path silently reads one of them.
+A subtree whose only content is disabled is dropped with it.
+
+The root you select is exempt here too, so exporting a switched-off station on purpose still works:
+select it and its enabled contents are written.
+
 **Walking transforms, not the framework's flat grouping.** The export follows Unity transform parenting
 rather than Open Commissioning's flat `Link.ScenePath`, which would flatten past the structural station
 and assembly wrappers that carry a `Hierarchy` but no `IDevice` — exactly the nodes where a human
@@ -94,6 +103,12 @@ Each node:
 A node is two computed paths and **one dictionary**. The export writes down what the `ContextNode`
 holds rather than assembling a view of it — nothing is queried at export time, which is why the
 result is identical on a machine with no twin framework installed.
+
+The document is written by the exporter rather than by `JsonUtility`, whose serializer stops at ten
+levels of nesting and drops the rest with nothing but a console warning. Each exported level costs two
+of those ten — the node, then its children list — so a real hierarchy went short at around the fifth.
+**Depth is now bounded by the scene alone.** Note that `JsonUtility.FromJson` has the same limit on the
+way back in, so read the file with a real JSON parser, not with Unity's.
 
 ```json
 {
@@ -213,6 +228,13 @@ under the root (case-insensitive — this is what keeps an OC `plcPath` like `MA
 working as a handle), or by a bare GameObject name when that name is unique. An ambiguous value or
 name is an error that tells you the full path to use instead.
 
+**Disabled objects.** Every walk — `context_tree`, `context_audit`, `context_ensure`, `context_sync` —
+skips disabled objects and everything under them, on the same rule as the [export](#export), so
+coverage is measured against what the export will actually contain. A station whose only devices are
+switched off stops being an `assembly` for the same reason. Addressing is the exception: `context_get`
+and `context_set` resolve a disabled object by path or name, because documenting a station that is
+currently off is ordinary work. It simply stays out of the listings and the export until it is enabled.
+
 **What `context_audit` does not report.** Coverage only: totals, per-tier counts, and the lists of
 missing and empty nodes. It deliberately does not aggregate over framework vocabulary — that would
 mean the neutral pipeline hard-coding one framework's key names. Read the nodes' `entries` and group
@@ -321,6 +343,10 @@ matching `versionDefines` entry, and that the entry's `expression` is empty.
 
 **The exporter reports it cannot decide what to export.** The scene has several root GameObjects and
 none is named `Project`. Select the root you want and run the menu item again.
+
+**A station that exists in the scene is missing from the export.** It, or something above it, is
+disabled — the export skips disabled objects and everything under them. Enable it and export again, or
+select it as the export root if you want that branch on its own.
 
 **Duplicate key warnings after a bulk import.** `Add` refuses duplicates, but the serialized list can
 still hold them if it was edited outside the API. Use `Set` for upserts, and fix the flagged rows in the

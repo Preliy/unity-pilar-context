@@ -396,6 +396,9 @@ namespace PILAR.Context.Pipeline
             for (var i = 0; i < t.childCount; i++)
             {
                 var child = t.GetChild(i);
+                // Nothing disabled is ever a target, so its whole branch is out. Skipping it here is
+                // what stops the subtree scan below from walking switched-off CAD geometry to prove it.
+                if (!child.gameObject.activeSelf) continue;
                 // Keep a branch when the child itself matched, or when anything below it did.
                 var childMatched = keep.Contains(child);
                 var subtreeMatched = childMatched ||
