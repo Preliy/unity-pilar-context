@@ -18,6 +18,10 @@ namespace PILAR.Context.Pipeline
     /// Device-ness and metadata come from <see cref="CtxEditor.ContextMetadataRegistry"/> rather than
     /// any specific twin framework, so these commands work — with a flatter tier structure — in a
     /// project with no provider installed.
+    ///
+    /// Every walk skips disabled objects and everything under them, matching the JSON export, so
+    /// coverage is measured against what the export will actually contain. Addressing one by name
+    /// still works: see <see cref="Resolve"/>.
     /// </summary>
     public static class ContextTargets
     {
@@ -51,6 +55,11 @@ namespace PILAR.Context.Pipeline
         /// <summary>
         /// Which context tier this transform belongs to, or <see cref="TierNone"/> when it is not a
         /// context target at all (CAD geometry, interaction colliders, wrappers with no device below).
+        ///
+        /// A wrapper earns the assembly tier from enabled devices only: a branch that is switched off
+        /// contributes nothing to what sits above it. The Transform's own state is not judged here —
+        /// <see cref="Enumerate"/> is what leaves disabled objects out, so <see cref="Describe"/> can
+        /// still report an honest tier for one the caller addressed deliberately.
         /// </summary>
         public static int GetTier(Transform t, Transform root)
         {
@@ -63,14 +72,37 @@ namespace PILAR.Context.Pipeline
 
         private static bool HasDeviceInSubtree(Transform t)
         {
-            return t.GetComponentsInChildren<Transform>(true)
-                .Any(CtxEditor.ContextMetadataRegistry.AnyDevice);
+            return Reachable(t).Any(CtxEditor.ContextMetadataRegistry.AnyDevice);
         }
 
         public static IEnumerable<Transform> Enumerate(Transform root)
         {
-            return root.GetComponentsInChildren<Transform>(true)
-                .Where(t => GetTier(t, root) != TierNone);
+            return Reachable(root).Where(t => GetTier(t, root) != TierNone);
+        }
+
+        /// <summary>
+        /// The root and every descendant reached without passing through a disabled object, in
+        /// hierarchy order. Every walk starts here, so a command never counts what the machine is not
+        /// currently running.
+        ///
+        /// The JSON export prunes on the same rule, which is the point: a scene that keeps a second
+        /// variant of a station switched off gives it the same name in the same place, so counting
+        /// both produces two targets nothing can tell apart by <c>scenePath</c> — and an audit that
+        /// counted them would report gaps against objects the export never writes.
+        ///
+        /// The root itself is included whatever its own state. It was named by the caller, and
+        /// refusing it would leave no way to work on a switched-off station at all.
+        /// </summary>
+        private static IEnumerable<Transform> Reachable(Transform root)
+        {
+            yield return root;
+
+            for (var i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                if (!child.gameObject.activeSelf) continue;
+                foreach (var descendant in Reachable(child)) yield return descendant;
+            }
         }
 
         /// <summary>Targets matching a scope filter: all | structural | devices | missing.</summary>
@@ -133,6 +165,10 @@ namespace PILAR.Context.Pipeline
         /// knowing which key carries it: any namespaced value may be a handle, so long as it is
         /// unique. It reads the node's stored entries rather than asking a provider, so it still
         /// resolves in a project where that framework is not installed.
+        ///
+        /// Unlike <see cref="Enumerate"/>, this searches disabled objects too. Addressing one by name
+        /// is a deliberate act, and documenting a station that is switched off is ordinary work — it
+        /// simply stays out of the audit and the export until someone enables it.
         /// </summary>
         public static Transform Resolve(string target, Transform root)
         {

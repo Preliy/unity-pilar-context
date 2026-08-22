@@ -52,6 +52,17 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
+        public void ContextTree_NestedDropsDisabledBranches()
+        {
+            BuildStandardFixture();
+            Root.transform.Find("FG_01").gameObject.SetActive(false);
+
+            var result = (ContextTreeNestedResult)ContextPipelineCommands.ContextTree();
+
+            CollectionAssert.AreEqual(new[] { "FG_02" }, result.tree.children.Select(c => c.name).ToArray());
+        }
+
+        [Test]
         public void ContextTree_DepthTruncates()
         {
             BuildStandardFixture();
@@ -119,6 +130,20 @@ namespace PILAR.Context.Pipeline.Tests
             Assert.AreEqual(5, result.total);
             Assert.AreEqual(2, result.withNode);
             Assert.AreEqual(1, result.nonEmpty, "an empty node is presence, not coverage");
+        }
+
+        [Test]
+        public void ContextAudit_LeavesDisabledTargetsOutOfTheTotals()
+        {
+            BuildStandardFixture();
+            Root.transform.Find("FG_01").gameObject.SetActive(false);
+
+            var result = (ContextAuditResult)ContextPipelineCommands.ContextAudit();
+
+            // FG_01, Station and Sensor are all switched off. Counting them would report three gaps
+            // against targets the export does not write, and coverage would never reach its total.
+            Assert.AreEqual(2, result.total);
+            CollectionAssert.AreEqual(new[] { "Project", "Project/FG_02" }, result.missingNode);
         }
 
         [Test]

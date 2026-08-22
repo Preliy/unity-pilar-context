@@ -75,6 +75,18 @@ namespace PILAR.Context.Pipeline.Tests
         }
 
         [Test]
+        public void GetTier_WrapperWhoseOnlyDeviceIsDisabledIsNotAnAssembly()
+        {
+            // A wrapper is an assembly because of what runs inside it. Once that is switched off it
+            // holds nothing, and enumerating it would report a gap against a target the export drops.
+            BuildStandardFixture();
+            Root.transform.Find("FG_01/Station/Sensor").gameObject.SetActive(false);
+            var station = Root.transform.Find("FG_01/Station");
+
+            Assert.AreEqual(ContextTargets.TierNone, ContextTargets.GetTier(station, Root.transform));
+        }
+
+        [Test]
         public void GetTier_GroupWinsOverDeviceForDirectChildOfRoot()
         {
             // Tier order is positional first: a device parked directly under the root is still the
@@ -94,6 +106,44 @@ namespace PILAR.Context.Pipeline.Tests
             CollectionAssert.AreEquivalent(
                 new[] { "Project", "FG_01", "FG_02", "Station", "Sensor" }, names);
             CollectionAssert.DoesNotContain(names, "Loose");
+        }
+
+        [Test]
+        public void Enumerate_SkipsDisabledTargets()
+        {
+            BuildStandardFixture();
+            Root.transform.Find("FG_02").gameObject.SetActive(false);
+
+            var names = ContextTargets.Enumerate(Root.transform).Select(t => t.name).ToList();
+
+            CollectionAssert.DoesNotContain(names, "FG_02");
+            CollectionAssert.Contains(names, "FG_01");
+        }
+
+        [Test]
+        public void Enumerate_SkipsEverythingUnderADisabledObject()
+        {
+            BuildStandardFixture();
+            Root.transform.Find("FG_01").gameObject.SetActive(false);
+
+            var names = ContextTargets.Enumerate(Root.transform).Select(t => t.name).ToList();
+
+            // The device two levels down is enabled in itself, and still out: it is not running.
+            CollectionAssert.AreEquivalent(new[] { "Project", "FG_02" }, names);
+        }
+
+        [Test]
+        public void Enumerate_CountsTheRootWhateverItsOwnState()
+        {
+            // A caller who names a switched-off station means it, and would otherwise get nothing at
+            // all back. Pruning applies to what is under the root, exactly as it does in the export.
+            BuildStandardFixture();
+            Root.SetActive(false);
+
+            var names = ContextTargets.Enumerate(Root.transform).Select(t => t.name).ToList();
+
+            CollectionAssert.Contains(names, "Project");
+            CollectionAssert.Contains(names, "Sensor");
         }
 
         [Test]
@@ -298,6 +348,19 @@ namespace PILAR.Context.Pipeline.Tests
             StringAssert.Contains("ambiguous", ex.Message);
             // The message has to carry a usable path, or the caller cannot recover from it.
             StringAssert.Contains("Project/FG_0", ex.Message);
+        }
+
+        [Test]
+        public void Resolve_StillFindsADisabledTarget()
+        {
+            // Enumerate skips it, addressing it does not: documenting a station that is switched off
+            // is ordinary work, and it simply stays out of the audit and the export meanwhile.
+            BuildStandardFixture();
+            var fg2 = Root.transform.Find("FG_02");
+            fg2.gameObject.SetActive(false);
+
+            Assert.AreSame(fg2, ContextTargets.Resolve("Project/FG_02", Root.transform));
+            Assert.AreSame(fg2, ContextTargets.Resolve("FG_02", Root.transform));
         }
 
         [Test]
